@@ -1,0 +1,3 @@
+[build]
+  command = "NITRO_PRESET=netlify bun run build"
+  publish = "dist"
