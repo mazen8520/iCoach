@@ -212,7 +212,7 @@ button {
   align-items: center;
   gap: 0.8rem;
   padding: 0 0.85rem;
-  border-left: 2px solid transparent;
+  border-inline-start: 2px solid transparent;
   color: var(--muted-foreground);
   font-size: 0.82rem;
   font-weight: 650;
@@ -223,12 +223,12 @@ button {
   color: var(--foreground);
 }
 .nav-active {
-  border-left-color: var(--primary);
+  border-inline-start-color: var(--primary);
   background: linear-gradient(90deg, var(--primary-fade), transparent);
   color: var(--foreground);
 }
 .nav-count {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: grid;
   min-width: 19px;
   height: 19px;
@@ -263,7 +263,7 @@ button {
 }
 .notification-dot {
   position: absolute;
-  right: 7px;
+  inset-inline-end: 7px;
   top: 7px;
   width: 6px;
   height: 6px;
@@ -324,7 +324,7 @@ button {
 .metric {
   min-width: 0;
   padding: 1.4rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .metric:last-child {
   border: 0;
@@ -406,7 +406,7 @@ button {
   display: flex;
   align-items: center;
   gap: 3rem;
-  padding-right: 3rem;
+  padding-inline-end: 3rem;
 }
 .live-chip {
   display: inline-flex;
@@ -437,7 +437,7 @@ button {
 }
 .attention-row:hover {
   background: var(--accent);
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
 }
 .attention-row small,
 .meeting-row small,
@@ -471,7 +471,7 @@ button {
 }
 .date-block {
   min-width: 54px;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .date-block small {
   color: var(--primary);
@@ -489,7 +489,7 @@ button {
 .search-wrap > svg {
   position: absolute;
   z-index: 1;
-  left: 0.75rem;
+  inset-inline-start: 0.75rem;
   top: 50%;
   width: 16px;
   transform: translateY(-50%);
@@ -497,7 +497,7 @@ button {
 }
 .search-wrap input {
   height: 42px;
-  padding-left: 2.4rem;
+  padding-inline-start: 2.4rem;
   background: var(--card);
   border-radius: 2px;
 }
@@ -577,7 +577,7 @@ button {
 }
 .profile-kpis > div {
   padding: 1.5rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .profile-kpis b {
   display: block;
@@ -595,7 +595,7 @@ button {
   flex-direction: column;
   gap: 0.5rem;
   padding: 1rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .week-day b {
   font-family: var(--font-display);
@@ -610,8 +610,8 @@ button {
 }
 blockquote {
   margin: 1.5rem 0 0;
-  border-left: 2px solid var(--primary);
-  padding-left: 1rem;
+  border-inline-start: 2px solid var(--primary);
+  padding-inline-start: 1rem;
   color: var(--muted-foreground);
   font-size: 0.8rem;
   line-height: 1.6;
@@ -628,14 +628,14 @@ blockquote {
   flex-direction: column;
   justify-content: space-around;
   padding-top: 50px;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   color: var(--muted-foreground);
   font-size: 0.65rem;
   text-align: center;
 }
 .calendar-day {
   position: relative;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   background: repeating-linear-gradient(
     to bottom,
     transparent 0 calc(14.28% - 1px),
@@ -664,13 +664,13 @@ blockquote {
 }
 .cal-event {
   position: absolute;
-  left: 5%;
-  right: 5%;
+  inset-inline-start: 5%;
+  inset-inline-end: 5%;
   overflow: hidden;
-  border-left: 3px solid var(--primary);
+  border-inline-start: 3px solid var(--primary);
   background: color-mix(in oklab, var(--primary) 14%, var(--card));
   padding: 0.55rem;
-  text-align: left;
+  text-align: start;
 }
 .cal-event small {
   display: block;
@@ -699,10 +699,10 @@ blockquote {
   background: var(--card);
 }
 .builder-library {
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .builder-settings {
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
 }
 .exercise-option {
   display: flex;
@@ -712,7 +712,7 @@ blockquote {
   padding: 0.8rem 0.5rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.75rem;
-  text-align: left;
+  text-align: start;
 }
 .exercise-option span {
   display: grid;
@@ -722,7 +722,7 @@ blockquote {
   background: var(--secondary);
 }
 .exercise-option > svg {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .exercise-option.active {
   color: var(--primary);
@@ -754,7 +754,7 @@ blockquote {
 .video-overlay {
   position: absolute;
   z-index: 2;
-  left: 1.5rem;
+  inset-inline-start: 1.5rem;
   bottom: 1.5rem;
 }
 .workout-cover h2,
@@ -766,7 +766,7 @@ blockquote {
 .play-button {
   position: absolute;
   z-index: 3;
-  right: 1.5rem;
+  inset-inline-end: 1.5rem;
   bottom: 1.5rem;
   display: grid;
   width: 50px;
@@ -841,7 +841,7 @@ blockquote {
 .video-thumb > span {
   position: absolute;
   z-index: 2;
-  right: 0.5rem;
+  inset-inline-end: 0.5rem;
   bottom: 0.5rem;
   background: var(--background);
   padding: 0.25rem;
@@ -879,8 +879,8 @@ blockquote {
   align-items: center;
   gap: 0 0.6rem;
   min-width: 105px;
-  border-left: 1px solid var(--border);
-  padding-left: 1rem;
+  border-inline-start: 1px solid var(--border);
+  padding-inline-start: 1rem;
 }
 .macro-strip span {
   grid-row: 1/3;
@@ -909,7 +909,7 @@ blockquote {
 }
 .meal-row:hover {
   background: var(--card);
-  padding-left: 1rem;
+  padding-inline-start: 1rem;
 }
 .meal-row time {
   width: 54px;
@@ -956,7 +956,7 @@ blockquote {
 }
 .conversation-list {
   padding: 1rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   overflow: auto;
 }
 .conversation {
@@ -966,7 +966,7 @@ blockquote {
   gap: 0.7rem;
   padding: 0.85rem 0.5rem;
   border-bottom: 1px solid var(--border);
-  text-align: left;
+  text-align: start;
 }
 .conversation.active {
   background: var(--primary-fade);
@@ -1111,7 +1111,7 @@ blockquote {
   color: var(--muted-foreground);
 }
 .checkin-card .status {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .signal-grid {
   display: grid;
@@ -1152,13 +1152,13 @@ blockquote {
   padding: 0.9rem;
   border-bottom: 1px solid var(--border);
   font-size: 0.75rem;
-  text-align: left;
+  text-align: start;
 }
 .settings-layout > nav button svg {
   width: 14px;
 }
 .settings-layout > nav button.active {
-  border-left: 2px solid var(--primary);
+  border-inline-start: 2px solid var(--primary);
   background: var(--primary-fade);
   color: var(--primary);
 }
@@ -1226,7 +1226,7 @@ blockquote {
 }
 .task-row:hover {
   background: var(--accent);
-  padding-left: 1.15rem;
+  padding-inline-start: 1.15rem;
 }
 .task-row.task-done {
   opacity: 0.55;
@@ -1267,7 +1267,7 @@ blockquote {
 }
 .client-hero-content {
   position: absolute;
-  left: clamp(1.5rem, 5vw, 4rem);
+  inset-inline-start: clamp(1.5rem, 5vw, 4rem);
   top: 50%;
   transform: translateY(-50%);
 }
@@ -1284,7 +1284,7 @@ blockquote {
 }
 .client-hero-progress {
   position: absolute;
-  right: 4rem;
+  inset-inline-end: 4rem;
   bottom: 3rem;
 }
 .client-kpi-strip {
@@ -1298,7 +1298,7 @@ blockquote {
   justify-content: center;
   gap: 0.8rem;
   padding: 1.3rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .client-kpi-strip svg {
   color: var(--primary);
@@ -1314,7 +1314,7 @@ blockquote {
 .coach-note {
   display: flex;
   gap: 1rem;
-  border-left: 2px solid var(--primary);
+  border-inline-start: 2px solid var(--primary);
   padding: 1.25rem;
   background: var(--card);
 }
@@ -1351,7 +1351,7 @@ blockquote {
   display: block;
 }
 .meeting-mini button {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .today-head {
   display: flex;
@@ -1407,7 +1407,7 @@ blockquote {
   border: 1px solid var(--border);
   padding: 1rem;
   background: var(--card);
-  text-align: left;
+  text-align: start;
   transition: 0.2s;
   cursor: pointer;
 }
@@ -1444,7 +1444,7 @@ blockquote {
   min-height: 105px;
   place-items: center;
   padding: 0.8rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   transition: 0.2s;
 }
 .week-selector button:hover,
@@ -1492,7 +1492,7 @@ blockquote {
   color: var(--muted-foreground);
 }
 .day-score {
-  text-align: right;
+  text-align: end;
 }
 .day-score b {
   display: block;
@@ -1534,7 +1534,7 @@ blockquote {
   z-index: 1;
 }
 .workout-strip > svg {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .workout-strip h3 {
   font-family: var(--font-display);
@@ -1558,12 +1558,12 @@ blockquote {
 }
 .session-progress {
   width: min(320px, 30vw);
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .session-progress span {
   display: block;
   margin-bottom: 0.5rem;
-  text-align: right;
+  text-align: end;
   font-size: 0.6rem;
   font-weight: 800;
 }
@@ -1575,7 +1575,7 @@ blockquote {
 }
 .exercise-rail {
   background: var(--card);
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .exercise-rail button {
   display: flex;
@@ -1583,7 +1583,7 @@ blockquote {
   gap: 0.7rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border);
-  text-align: left;
+  text-align: start;
 }
 .exercise-rail button > span {
   display: grid;
@@ -1604,7 +1604,7 @@ blockquote {
   color: var(--muted-foreground);
 }
 .exercise-rail button.active {
-  border-left: 2px solid var(--primary);
+  border-inline-start: 2px solid var(--primary);
   background: var(--primary-fade);
 }
 .exercise-rail button.done > span {
@@ -1622,7 +1622,7 @@ blockquote {
 .video-label {
   position: absolute;
   bottom: 0.7rem;
-  left: 0.7rem;
+  inset-inline-start: 0.7rem;
   background: var(--background);
   padding: 0.35rem;
   font-size: 0.58rem;
@@ -1647,7 +1647,7 @@ blockquote {
 }
 .prescription div {
   padding: 1rem;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   text-align: center;
 }
 .prescription small,
@@ -1687,7 +1687,7 @@ blockquote {
   align-items: center;
   justify-content: center;
   gap: 1.2rem;
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   background: var(--card);
 }
 .rest-panel > svg {
@@ -1717,7 +1717,7 @@ blockquote {
   padding: 2rem;
 }
 .progress-hero > div:first-child {
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
 }
 .progress-hero strong {
   font-family: var(--font-display);
@@ -1726,7 +1726,7 @@ blockquote {
 }
 .progress-hero > div > svg {
   position: absolute;
-  right: 2rem;
+  inset-inline-end: 2rem;
   bottom: 2rem;
   color: var(--primary);
 }
@@ -1777,7 +1777,7 @@ blockquote {
   display: grid;
   aspect-ratio: 1.6;
   place-items: center;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   font-family: var(--font-display);
   font-size: 1.2rem;
@@ -1835,7 +1835,7 @@ blockquote {
 }
 .unit-input span {
   position: absolute;
-  right: 1rem;
+  inset-inline-end: 1rem;
   top: 50%;
   transform: translateY(-50%);
   font-size: 0.6rem;
@@ -1970,7 +1970,7 @@ blockquote {
 .landing-scroll {
   position: absolute;
   z-index: 2;
-  right: 2rem;
+  inset-inline-end: 2rem;
   bottom: 3rem;
   display: flex;
   align-items: center;
@@ -2025,7 +2025,8 @@ blockquote {
   width: 100%;
   max-width: 480px;
   justify-content: center;
-  padding: 6rem 1.5rem 3rem clamp(1.5rem, 4vw, 3rem);
+  padding-block: 6rem 3rem;
+  padding-inline: clamp(1.5rem, 4vw, 3rem) 1.5rem;
 }
 .auth-card {
   width: 100%;
@@ -2119,7 +2120,7 @@ blockquote {
     grid-template-columns: auto 1fr 160px auto;
   }
   .client-streak,
-  .client-row > .text-right {
+  .client-row > .client-last-active {
     display: none;
   }
 }
@@ -2144,7 +2145,7 @@ blockquote {
   }
   .lead-stats {
     position: absolute;
-    right: 1.5rem;
+    inset-inline-end: 1.5rem;
     bottom: 1.5rem;
     padding: 0;
   }
@@ -2273,7 +2274,7 @@ blockquote {
     min-height: 520px;
   }
   .client-hero-progress {
-    right: 1rem;
+    inset-inline-end: 1rem;
     bottom: 1rem;
   }
   .client-kpi-strip {
@@ -2326,7 +2327,7 @@ blockquote {
     grid-template-columns: 1fr;
   }
   .progress-hero > div:first-child {
-    border-right: 0;
+    border-inline-end: 0;
     border-bottom: 1px solid var(--border);
   }
   .month-grid button {
@@ -2612,7 +2613,7 @@ a:active {
   }
   .page-head + .dashboard-lead .lead-stats {
     position: relative;
-    right: auto;
+    inset-inline-end: auto;
     bottom: auto;
     align-self: flex-end;
     margin-top: 1.25rem;
@@ -2658,8 +2659,8 @@ a:active {
     grid-column: 1 / -1;
     width: 100%;
   }
-  .toolbar > .ml-auto {
-    margin-left: 0;
+  .toolbar > .ms-auto {
+    margin-inline-start: 0;
     align-self: center;
   }
   .dashboard-lead,
@@ -2889,8 +2890,8 @@ a:active {
     font-size: 0.6rem;
   }
   .client-hero-content {
-    left: 1.15rem;
-    right: 1.15rem;
+    inset-inline-start: 1.15rem;
+    inset-inline-end: 1.15rem;
   }
   .client-hero-content h2 {
     font-size: 2.55rem;
@@ -2933,4 +2934,486 @@ a:active {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ===== Language switch (AR / EN) ===== */
+.lang-switch {
+  display: inline-flex;
+  height: 38px;
+  flex: none;
+  align-items: center;
+  gap: 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  padding: 0 0.35rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.lang-switch button {
+  padding: 0.3rem;
+  color: var(--muted-foreground);
+  transition: color 0.2s ease;
+}
+.lang-switch button:hover {
+  color: var(--foreground);
+}
+.lang-switch button.active {
+  color: var(--primary);
+}
+.lang-switch [aria-hidden="true"] {
+  opacity: 0.45;
+}
+
+/* ===== Mobile account sheet: current user + sign out ===== */
+.mobile-more-account {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+}
+.mobile-more-account b {
+  font-size: 0.8rem;
+}
+.mobile-more-account small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.mobile-signout {
+  display: inline-flex;
+  min-height: 40px;
+  flex: none;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in oklab, var(--primary) 45%, transparent);
+  border-radius: 10px;
+  background: var(--primary-fade);
+  padding: 0 0.85rem;
+  color: var(--primary);
+  font-size: 0.74rem;
+  font-weight: 800;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+.mobile-signout:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* ===== Filters & scrollable segmented controls ===== */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 1rem;
+}
+.filter-bar select {
+  min-width: 190px;
+}
+.filter-count {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--primary-foreground);
+  padding: 0 0.3rem;
+  color: var(--primary);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+.segmented.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented.scroll::-webkit-scrollbar {
+  display: none;
+}
+.segmented.scroll button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* ===== Coach schedule: day/week time grid + month view ===== */
+.calendar-range-label {
+  margin-inline-start: auto;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.calendar-grid {
+  grid-template-columns: 64px repeat(var(--cal-days, 7), minmax(0, 1fr));
+  min-height: 0;
+}
+.calendar-times {
+  display: block;
+  padding-top: 0;
+}
+.calendar-day {
+  min-width: 0;
+  background: none;
+}
+.calendar-body {
+  position: relative;
+  height: 640px;
+}
+.calendar-day .calendar-body {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(12.5% - 1px),
+    var(--border) calc(12.5% - 1px) 12.5%
+  );
+}
+.calendar-times .calendar-body span {
+  position: absolute;
+  inset-inline: 0;
+  transform: translateY(-50%);
+  text-align: center;
+}
+.calendar-times .calendar-body span:first-child {
+  transform: none;
+}
+.calendar-times .calendar-body span:last-child {
+  transform: translateY(-100%);
+}
+.cal-event {
+  z-index: 1;
+  min-height: 26px;
+}
+.cal-event b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-event.event {
+  border-color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--foreground) 8%, var(--card));
+}
+.cal-event.event small {
+  color: var(--muted-foreground);
+}
+.month-view {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
+  background: var(--card);
+}
+.month-view-label {
+  border-bottom: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
+  padding: 0.6rem 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+.month-cell {
+  display: flex;
+  min-width: 0;
+  min-height: 118px;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
+  padding: 0.4rem;
+}
+.month-cell.outside {
+  background: var(--background);
+  opacity: 0.55;
+}
+.month-cell-date {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  align-self: flex-start;
+  place-items: center;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+.month-cell.today .month-cell-date {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.month-chip {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border-inline-start: 2px solid var(--primary);
+  background: color-mix(in oklab, var(--primary) 14%, var(--card));
+  padding: 0.2rem 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.month-chip span {
+  color: var(--muted-foreground);
+}
+.month-chip.meeting {
+  border-color: var(--success);
+  background: color-mix(in oklab, var(--success) 10%, var(--card));
+}
+.month-chip.event {
+  border-color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--foreground) 8%, var(--card));
+}
+.month-more {
+  align-self: flex-start;
+  color: var(--primary);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+.month-grid button.is-today {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* ===== Detail lists, analysis, nutrition plans, video player ===== */
+.detail-list {
+  display: grid;
+}
+.detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0;
+  font-size: 0.85rem;
+}
+.detail-list > div:last-child {
+  border-bottom: 0;
+}
+.detail-list dt {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.detail-list dd {
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: end;
+}
+.zoom-link {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.analysis-grid .metric {
+  border-bottom: 1px solid var(--border);
+}
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+.plan-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.9rem;
+  text-align: start;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.plan-card:not(.static):hover {
+  border-color: color-mix(in oklab, var(--primary) 50%, var(--border));
+}
+.plan-card.selected {
+  border-color: var(--primary);
+  background: var(--primary-fade);
+}
+.plan-card b {
+  font-size: 0.88rem;
+}
+.plan-card small {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+}
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 1rem 1.25rem;
+}
+.video-stage {
+  position: relative;
+  width: 100%;
+  max-height: 75vh;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+.video-stage video,
+.video-stage iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+.video-stage-message {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.video-stage-message a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  color: var(--primary);
+  font-weight: 700;
+}
+button.appointment:disabled {
+  cursor: default;
+}
+button.appointment:not(:disabled):hover {
+  background: var(--accent);
+}
+
+@media (max-width: 767px) {
+  .calendar-grid {
+    grid-template-columns: 50px repeat(var(--cal-days, 7), minmax(150px, 1fr));
+  }
+  .calendar-range-label {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+  .month-cell {
+    min-height: 76px;
+    padding: 0.25rem;
+  }
+  .month-chip {
+    padding: 0.15rem 0.25rem;
+    font-size: 0.55rem;
+  }
+  .month-chip span {
+    display: none;
+  }
+  .analysis-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .plan-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* ===== Right-to-left (Arabic) ===== */
+/* Layout mirrors automatically through logical properties (inset-inline, margin-inline, ...);
+   these rules flip what logical properties can't: gradients, hover nudges and arrow icons. */
+[dir="rtl"] .nav-active {
+  background: linear-gradient(270deg, var(--primary-fade), transparent);
+}
+[dir="rtl"] .video-feature:after {
+  background: linear-gradient(270deg, oklch(0.08 0 0/0.9), transparent);
+}
+[dir="rtl"] .client-hero-shade {
+  background: linear-gradient(
+    270deg,
+    oklch(0.06 0 0/0.93) 0%,
+    oklch(0.06 0 0/0.35) 65%,
+    oklch(0.06 0 0/0.6)
+  );
+}
+[dir="rtl"] .landing-shade,
+[dir="rtl"] .auth-shell-shade {
+  background:
+    linear-gradient(
+      270deg,
+      oklch(0.055 0 0/0.98) 0%,
+      oklch(0.055 0 0/0.86) 35%,
+      oklch(0.055 0 0/0.12) 73%
+    ),
+    linear-gradient(0deg, oklch(0.055 0 0/0.7), transparent 55%);
+}
+[dir="rtl"] .client-row:hover {
+  transform: translateX(-3px);
+}
+[dir="rtl"] .timeline-content:hover {
+  transform: translateX(-4px);
+}
+[dir="rtl"] .lucide-chevron-right,
+[dir="rtl"] .lucide-chevron-left,
+[dir="rtl"] .lucide-move-right,
+[dir="rtl"] .lucide-arrow-up-right,
+[dir="rtl"] .lucide-log-in,
+[dir="rtl"] .lucide-log-out,
+[dir="rtl"] .lucide-send {
+  transform: scaleX(-1);
+}
+@keyframes slide-rtl {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [dir="rtl"] .animate-slide-in {
+    animation-name: slide-rtl;
+  }
+}
+/* Arabic script is cursive — letter-spacing breaks the joins between letters — and its glyphs
+   are taller than the condensed Latin display face, so tight display line-heights would clip. */
+html[lang="ar"] body,
+html[lang="ar"] body * {
+  letter-spacing: 0 !important;
+}
+html[lang="ar"] .page-title,
+html[lang="ar"] .auth-title,
+html[lang="ar"] .landing h1,
+html[lang="ar"] .lead-copy h2,
+html[lang="ar"] .today-head h1,
+html[lang="ar"] .client-hero-content h2,
+html[lang="ar"] .date-big b {
+  line-height: 1.2;
 }

@@ -1,4 +1,4 @@
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import {
   CalendarDays,
   Camera,
@@ -10,7 +10,6 @@ import {
   Dumbbell,
   Flame,
   HeartPulse,
-  MessageSquare,
   Moon,
   Play,
   Plus,
@@ -31,12 +30,14 @@ import runner from "@/assets/workout-runner.jpg";
 import { AppShell } from "./app-shell";
 import {
   ChangePasswordCard,
+  EmptyState,
   PageHead,
   ProgressBar,
   ProgressRing,
   SectionTitle,
   TaskRow,
 } from "./primitives";
+import { MeetingDetailsDialog, VideoPlayerDialog, type PlayableVideo } from "./shared";
 import { useAuth } from "@/lib/auth";
 import { useMyCoach } from "@/hooks/use-clients";
 import { useClientStats, useClientToday, useToggleHabitLog } from "@/hooks/use-dashboard";
@@ -48,7 +49,13 @@ import {
   useStartAssignment,
   useTodayAssignment,
 } from "@/hooks/use-workouts";
-import { useMealLogs, useNutritionPlan, useToggleMealLog } from "@/hooks/use-nutrition";
+import {
+  planForDay,
+  useMealLogs,
+  useMyNutritionPlans,
+  useToggleMealLog,
+  type DayType,
+} from "@/hooks/use-nutrition";
 import {
   useCompletionStats,
   useLogProgressEntry,
@@ -57,18 +64,22 @@ import {
 } from "@/hooks/use-progress";
 import { useSubmitCheckIn, useUploadCheckInPhotos } from "@/hooks/use-check-ins";
 import { useEnsureConversation, useMessages, useSendMessage } from "@/hooks/use-messages";
-import { useMeetings } from "@/hooks/use-meetings";
+import { useMeetings, type MeetingWithOther } from "@/hooks/use-meetings";
+import { useMyScheduleEvents } from "@/hooks/use-schedule";
 import { useUpdateNotificationPrefs, useUpdateProfile } from "@/hooks/use-settings";
-
 import {
-  formatClock,
-  formatDay,
+  endOfMonth,
   initialsFromName,
+  isHttpUrl,
   isoDate,
-  timeAgo,
+  parseIsoDate,
+  startOfMonth,
   weekDates,
 } from "@/lib/format";
 import type { MealRow, SleepQuality } from "@/lib/database.types";
+import { playRestChime, unlockChimeAudio } from "@/lib/chime";
+import { useI18n } from "@/lib/i18n";
+import { errorText } from "@/lib/i18n/errors";
 
 export function ClientPage({ page }: { page: string }) {
   return (
@@ -117,12 +128,14 @@ type TodayTask = {
 
 /** Builds today's task list from real assignments, meals and habits, with working toggles. */
 function useTodayTasks() {
+  const i18n = useI18n();
+  const { t, tp } = i18n;
   const data = useClientToday();
   const completeAssignment = useCompleteAssignment();
   const toggleMeal = useToggleMealLog();
   const toggleHabit = useToggleHabitLog();
-  const submitCheckIn = useSubmitCheckIn();
   const today = isoDate();
+  const onError = (err: unknown) => toast.error(errorText(err, i18n, "errors.generic"));
 
   const tasks: TodayTask[] = [];
   if (data.assignment) {
@@ -132,12 +145,12 @@ function useTodayTasks() {
     } | null;
     tasks.push({
       id: `workout-${data.assignment.id}`,
-      title: workout?.title ?? "Workout",
-      meta: workout?.duration_minutes ? `${workout.duration_minutes} min` : "",
-      time: data.assignment.scheduled_time?.slice(0, 5) ?? "TODAY",
+      title: workout?.title ?? t("common.workout"),
+      meta: workout?.duration_minutes ? tp("common.minutes", workout.duration_minutes) : "",
+      time: data.assignment.scheduled_time?.slice(0, 5) ?? t("task.today"),
       type: "workout",
       done: data.assignment.status === "completed",
-      toggle: () => completeAssignment.mutate(data.assignment!.id),
+      toggle: () => completeAssignment.mutate(data.assignment!.id, { onError }),
     });
   }
   for (const meal of data.plan?.meals ?? []) {
@@ -145,12 +158,15 @@ function useTodayTasks() {
     tasks.push({
       id: `meal-${meal.id}`,
       title: meal.name,
-      meta: `${meal.calories} kcal`,
-      time: meal.meal_time?.slice(0, 5) ?? "ANYTIME",
+      meta: `${meal.calories} ${t("common.kcal")}`,
+      time: meal.meal_time?.slice(0, 5) ?? t("task.anytime"),
       type: "meal",
       done: log?.completed ?? false,
       toggle: () =>
-        toggleMeal.mutate({ mealId: meal.id, date: today, completed: !(log?.completed ?? false) }),
+        toggleMeal.mutate(
+          { mealId: meal.id, date: today, completed: !(log?.completed ?? false) },
+          { onError },
+        ),
     });
   }
   for (const habit of data.habitTargets) {
@@ -158,27 +174,30 @@ function useTodayTasks() {
     tasks.push({
       id: `habit-${habit.id}`,
       title: habit.name,
-      meta: `${habit.target_value}${habit.unit} goal`,
-      time: "ALL DAY",
+      meta: t("task.habitGoal", { value: habit.target_value, unit: habit.unit }),
+      time: t("task.allDay"),
       type: "habit",
       done: log?.completed ?? false,
       toggle: () =>
-        toggleHabit.mutate({
-          habitTargetId: habit.id,
-          completed: !(log?.completed ?? false),
-          targetValue: habit.target_value,
-        }),
+        toggleHabit.mutate(
+          {
+            habitTargetId: habit.id,
+            completed: !(log?.completed ?? false),
+            targetValue: habit.target_value,
+          },
+          { onError },
+        ),
     });
   }
   tasks.push({
     id: "checkin",
-    title: "Weekly check-in",
-    meta: "Energy, sleep & feedback",
-    time: "BY 21:00",
+    title: t("task.weeklyCheckIn"),
+    meta: t("task.checkInMeta"),
+    time: t("task.by"),
     type: "habit",
     done: data.checkInDone,
     toggle: () => {
-      if (!data.checkInDone) toast.info("Head to Check-ins to submit this week's reflection.");
+      if (!data.checkInDone) toast.info(t("task.checkInToast"));
     },
   });
 
@@ -188,32 +207,30 @@ function useTodayTasks() {
   return { tasks, pct, isLoading: data.isLoading, assignment: data.assignment };
 }
 function Dashboard() {
+  const { t, tp, fmt } = useI18n();
   const { profile } = useAuth();
   const { tasks, pct, assignment } = useTodayTasks();
   const stats = useClientStats();
   const { data: coach } = useMyCoach();
   const { data: meetings } = useMeetings();
   const navigate = useNavigate();
-  const firstName = profile?.full_name?.split(" ")[0] || "athlete";
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  const firstName = profile?.full_name?.split(" ")[0] || t("client.dashboard.fallbackName");
+  const today = fmt.date(new Date(), { weekday: "long", month: "short", day: "numeric" });
   const workout = assignment?.workouts as unknown as {
     title: string;
     duration_minutes: number;
   } | null;
   const nextMeeting = (meetings ?? []).find(
-    (m) => new Date(m.scheduled_at).getTime() >= Date.now(),
+    (m) => m.status === "scheduled" && new Date(m.scheduled_at).getTime() >= Date.now(),
   );
+  const coachFirst = coach?.full_name?.split(" ")[0];
 
   return (
     <>
       <PageHead
         eyebrow={today}
-        title={`Ready to move, ${firstName}?`}
-        subtitle="Your next action is clear. Everything else can wait."
+        title={t("client.dashboard.greeting", { name: firstName })}
+        subtitle={t("client.dashboard.subtitle")}
       />
       <section className="client-hero">
         <img
@@ -221,75 +238,81 @@ function Dashboard() {
           width={1600}
           height={912}
           loading="eager"
-          alt="Athlete performing battle rope training"
+          alt={t("client.dashboard.heroAlt")}
         />
         <div className="client-hero-shade" />
         <div className="client-hero-content">
           <span className="live-chip">
             <Dumbbell />
-            TODAY'S WORKOUT
+            {t("client.dashboard.todaysWorkout")}
           </span>
-          <h2>{workout?.title ?? "Rest day"}</h2>
+          <h2>{workout?.title ?? t("client.dashboard.restDay")}</h2>
           <p>
             {workout?.duration_minutes
-              ? `${workout.duration_minutes} minutes`
-              : "No session scheduled today"}
+              ? t("client.dashboard.minutes", { count: workout.duration_minutes })
+              : t("client.dashboard.noSession")}
           </p>
           {workout && assignment && (
             <Button size="lg" onClick={() => navigate({ to: "/client/workouts" })}>
-              Start workout <Play fill="currentColor" />
+              {t("client.dashboard.startWorkout")} <Play fill="currentColor" />
             </Button>
           )}
         </div>
         <div className="client-hero-progress">
-          <ProgressRing value={pct} size={126} label="DAY DONE" />
+          <ProgressRing value={pct} size={126} label={t("client.dashboard.dayDone")} />
         </div>
       </section>
       <div className="client-kpi-strip">
         <div>
           <Flame />
           <span>
-            <b>{stats.data?.streakDays ?? 0} days</b>
-            <small>Current streak</small>
+            <b>{tp("common.days", stats.data?.streakDays ?? 0)}</b>
+            <small>{t("client.dashboard.currentStreak")}</small>
           </span>
         </div>
         <div>
           <Zap />
           <span>
             <b>{stats.data?.weeklyCompletion ?? 0}%</b>
-            <small>Weekly score</small>
+            <small>{t("client.dashboard.weeklyScore")}</small>
           </span>
         </div>
         <div>
           <Clock3 />
           <span>
-            <b>{nextMeeting ? formatClock(nextMeeting.scheduled_at) : "—"}</b>
-            <small>Coach meeting</small>
+            <b>{nextMeeting ? fmt.clock(nextMeeting.scheduled_at) : "—"}</b>
+            <small>{t("client.dashboard.coachMeeting")}</small>
           </span>
         </div>
       </div>
       <div className="content-grid mt-8">
         <section>
           <SectionTitle
-            overline="Your plan"
-            title="Move through today"
-            action={<span className="text-sm font-bold text-primary">{pct}% DONE</span>}
+            overline={t("client.dashboard.yourPlan")}
+            title={t("client.dashboard.moveThroughToday")}
+            action={
+              <span className="text-sm font-bold text-primary">
+                {t("client.dashboard.pctDone", { pct })}
+              </span>
+            }
           />
           <div className="panel p-2">
             {tasks.length === 0 && (
-              <p className="p-4 text-sm text-muted-foreground">Nothing scheduled for today yet.</p>
+              <p className="p-4 text-sm text-muted-foreground">
+                {t("client.dashboard.nothingToday")}
+              </p>
             )}
-            {tasks.map((t) => (
+            {tasks.map((task) => (
               <TaskRow
-                key={t.id}
-                title={t.title}
-                meta={t.meta}
-                done={t.done}
-                onClick={t.toggle}
+                key={task.id}
+                title={task.title}
+                meta={task.meta}
+                done={task.done}
+                onClick={task.toggle}
                 icon={
-                  t.type === "workout" ? (
+                  task.type === "workout" ? (
                     <Dumbbell size={15} />
-                  ) : t.type === "meal" ? (
+                  ) : task.type === "meal" ? (
                     <Utensils size={15} />
                   ) : (
                     <Circle size={13} />
@@ -301,40 +324,41 @@ function Dashboard() {
         </section>
         <section>
           <SectionTitle
-            overline={`From ${coach?.full_name?.split(" ")[0] ?? "your coach"}`}
-            title="Coach signal"
+            overline={t("client.dashboard.fromCoach", {
+              name: coachFirst ?? t("client.dashboard.yourCoach"),
+            })}
+            title={t("client.dashboard.coachSignal")}
           />
           {coach ? (
             <div className="coach-note">
               <span className="avatar-md">{initialsFromName(coach.full_name)}</span>
               <div>
                 <b>{coach.full_name}</b>
-                <p>Send a message to get personal feedback on today's session.</p>
+                <p>{t("client.dashboard.coachNoteBody")}</p>
                 <Link to="/client/messages">
                   <button>
-                    Message {coach.full_name.split(" ")[0]} <ChevronRight />
+                    {t("client.dashboard.messageName", { name: coachFirst ?? "" })} <ChevronRight />
                   </button>
                 </Link>
               </div>
             </div>
           ) : (
-            <div className="panel p-6 text-sm text-muted-foreground">
-              You're not linked to a coach yet.
-            </div>
+            <div className="panel p-6 text-sm text-muted-foreground">{t("client.notLinked")}</div>
           )}
           {nextMeeting && (
             <div className="meeting-mini">
               <Video />
               <div>
-                <p className="eyebrow">UPCOMING</p>
+                <p className="eyebrow">{t("client.dashboard.upcoming")}</p>
                 <b>{nextMeeting.title}</b>
                 <small>
-                  {formatClock(nextMeeting.scheduled_at)} · {nextMeeting.duration_minutes} min
+                  {fmt.clock(nextMeeting.scheduled_at)} ·{" "}
+                  {tp("common.minutes", nextMeeting.duration_minutes)}
                 </small>
               </div>
               <Link to="/client/meetings">
                 <Button variant="outline" size="sm">
-                  Details
+                  {t("common.details")}
                 </Button>
               </Link>
             </div>
@@ -345,35 +369,28 @@ function Dashboard() {
   );
 }
 function Today() {
+  const { t, tp, fmt } = useI18n();
   const { tasks, pct, isLoading } = useTodayTasks();
   const navigate = useNavigate();
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  const today = fmt.date(new Date(), { weekday: "long", month: "short", day: "numeric" });
   return (
     <>
       <div className="today-head">
         <div>
           <p className="eyebrow">{today}</p>
-          <h1>Today is the work.</h1>
-          <p>
-            {tasks.length} action{tasks.length === 1 ? "" : "s"}. One clear target.
-          </p>
+          <h1>{t("client.today.title")}</h1>
+          <p>{tp("client.today.actions", tasks.length)}</p>
         </div>
         <ProgressRing value={pct} size={145} />
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">Loading today's plan...</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">{t("client.today.loading")}</p>}
       {!isLoading && tasks.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Nothing scheduled for today. Enjoy the rest.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("client.today.empty")}</p>
       )}
       <div className="today-timeline">
-        {tasks.map((t) => (
-          <div className={`timeline-item ${t.done ? "done" : ""}`} key={t.id}>
-            <div className="timeline-time">{t.time}</div>
+        {tasks.map((task) => (
+          <div className={`timeline-item ${task.done ? "done" : ""}`} key={task.id}>
+            <div className="timeline-time">{task.time}</div>
             <div className="timeline-line">
               <span />
             </div>
@@ -381,31 +398,31 @@ function Today() {
               className="timeline-content"
               role="button"
               tabIndex={0}
-              onClick={t.toggle}
+              onClick={task.toggle}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  t.toggle();
+                  task.toggle();
                 }
               }}
             >
-              <span className={`task-check ${t.done ? "checked" : ""}`}>
-                {t.done ? (
+              <span className={`task-check ${task.done ? "checked" : ""}`}>
+                {task.done ? (
                   <Check />
-                ) : t.type === "workout" ? (
+                ) : task.type === "workout" ? (
                   <Dumbbell />
-                ) : t.type === "meal" ? (
+                ) : task.type === "meal" ? (
                   <Utensils />
                 ) : (
                   <HeartPulse />
                 )}
               </span>
               <div>
-                <p className="eyebrow">{t.type}</p>
-                <h3>{t.title}</h3>
-                <span>{t.meta}</span>
+                <p className="eyebrow">{t(`task.type.${task.type}`)}</p>
+                <h3>{task.title}</h3>
+                <span>{task.meta}</span>
               </div>
-              {t.type === "workout" && !t.done && (
+              {task.type === "workout" && !task.done && (
                 <Button
                   size="sm"
                   onClick={(e) => {
@@ -413,7 +430,7 @@ function Today() {
                     navigate({ to: "/client/workouts" });
                   }}
                 >
-                  Start <Play fill="currentColor" />
+                  {t("client.today.start")} <Play fill="currentColor" />
                 </Button>
               )}
             </div>
@@ -424,15 +441,16 @@ function Today() {
   );
 }
 function Week() {
+  const { t, fmt } = useI18n();
   const dates = weekDates();
   const [day, setDay] = useState(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
-  const from = dates[0]!.toISOString().slice(0, 10);
-  const to = dates[6]!.toISOString().slice(0, 10);
+  const from = isoDate(dates[0]!);
+  const to = isoDate(dates[6]!);
   const { data: assignments } = useClientAssignments(from, to);
-  const { data: plan } = useNutritionPlan();
+  const { data: plans } = useMyNutritionPlans();
 
   const weekSummary = dates.map((date) => {
-    const key = date.toISOString().slice(0, 10);
+    const key = isoDate(date);
     const rows = (assignments ?? []).filter((a) => a.scheduled_date === key);
     const total = rows.length;
     const done = rows.filter((a) => a.status === "completed").length;
@@ -441,28 +459,32 @@ function Week() {
       duration_minutes: number;
     } | null;
     return {
-      day: formatDay(date.toISOString()),
+      key,
+      day: fmt.weekday(date),
       date: String(date.getDate()),
       score: total > 0 ? Math.round((done / total) * 100) : 0,
-      label: workout?.title ?? "Rest",
+      title: workout?.title ?? null,
       duration: workout?.duration_minutes,
     };
   });
   const selectedDay = weekSummary[day]!;
+  const isRest = !selectedDay.title;
+  const dayPlan = planForDay(plans ?? [], !isRest);
+  const label = selectedDay.title ?? t("common.rest");
 
   return (
     <>
       <PageHead
-        eyebrow={`${dates[0]!.toLocaleDateString(undefined, { month: "short", day: "numeric" })}—${dates[6]!.getDate()}`}
-        title="The week ahead"
-        subtitle="Rhythm, recovery, and the work between."
+        eyebrow={`${fmt.date(dates[0]!, { month: "short", day: "numeric" })} — ${fmt.date(dates[6]!, { month: "short", day: "numeric" })}`}
+        title={t("client.week.title")}
+        subtitle={t("client.week.subtitle")}
       />
       <div className="week-selector">
         {weekSummary.map((d, i) => (
           <button
             onClick={() => setDay(i)}
             className={`${day === i ? "selected" : ""} ${d.score === 100 ? "done" : ""}`}
-            key={d.day + d.date}
+            key={d.key}
           >
             <small>{d.day}</small>
             <b>{d.date}</b>
@@ -472,52 +494,54 @@ function Week() {
       </div>
       <section className="day-focus">
         <div className="day-title">
-          <p className="eyebrow">
-            {selectedDay.day} · DAY {day + 1}
-          </p>
-          <h2>{selectedDay.label}</h2>
-          <p>
-            {selectedDay.label === "Rest"
-              ? "Intentional recovery. Walk, mobility and fuel."
-              : "Build quality through every rep. Keep two reps in reserve."}
-          </p>
+          <p className="eyebrow">{t("client.week.dayN", { day: selectedDay.day, n: day + 1 })}</p>
+          <h2>{label}</h2>
+          <p>{isRest ? t("client.week.restCopy") : t("client.week.trainCopy")}</p>
         </div>
         <div className="day-score">
           <b>{selectedDay.score}%</b>
-          <span>COMPLETE</span>
+          <span>{t("client.week.complete")}</span>
         </div>
       </section>
       <div className="plan-columns">
         <section>
           <SectionTitle
-            overline="Training"
-            title={selectedDay.label === "Rest" ? "Recovery flow" : "Primary session"}
+            overline={t("client.week.training")}
+            title={isRest ? t("client.week.recoveryFlow") : t("client.week.primarySession")}
           />
           <div className="workout-strip">
-            <img src={runner} width={1600} height={912} loading="lazy" alt="Running workout" />
+            <img
+              src={runner}
+              width={1600}
+              height={912}
+              loading="lazy"
+              alt={t("client.week.runningAlt")}
+            />
             <div>
-              <p className="eyebrow">{selectedDay.label === "Rest" ? "MOBILITY" : "STRENGTH"}</p>
-              <h3>{selectedDay.label}</h3>
+              <p className="eyebrow">
+                {isRest ? t("client.week.mobility") : t("client.week.strength")}
+              </p>
+              <h3>{label}</h3>
               <p>
                 {selectedDay.duration
-                  ? `${selectedDay.duration} min · Guided session`
-                  : "Guided session"}
+                  ? t("client.week.guidedMinutes", { count: selectedDay.duration })
+                  : t("client.week.guided")}
               </p>
             </div>
             <Play />
           </div>
         </section>
         <section>
-          <SectionTitle overline="Fuel" title="Meals" />
+          <SectionTitle overline={t("client.week.fuel")} title={t("client.week.meals")} />
           <div className="panel p-2">
-            {(plan?.meals ?? []).length === 0 && (
-              <p className="p-4 text-sm text-muted-foreground">No nutrition plan assigned yet.</p>
+            {(dayPlan?.meals ?? []).length === 0 && (
+              <p className="p-4 text-sm text-muted-foreground">{t("client.week.noPlan")}</p>
             )}
-            {(plan?.meals ?? []).slice(0, 3).map((m: MealRow) => (
+            {(dayPlan?.meals ?? []).slice(0, 3).map((m: MealRow) => (
               <TaskRow
                 key={m.id}
                 title={m.name}
-                meta={`${m.meal_time?.slice(0, 5) ?? ""} · ${m.calories} kcal`}
+                meta={`${m.meal_time?.slice(0, 5) ?? ""} · ${m.calories} ${t("common.kcal")}`}
                 done={false}
                 icon={<Utensils size={15} />}
               />
@@ -529,6 +553,8 @@ function Week() {
   );
 }
 function Workout() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const navigate = useNavigate();
   const { data: todayAssignment, isLoading: loadingToday } = useTodayAssignment();
   const { data, isLoading } = useAssignmentDetail(todayAssignment?.id);
@@ -538,6 +564,7 @@ function Workout() {
   const [active, setActive] = useState(0);
   const [restSeconds, setRestSeconds] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [playing, setPlaying] = useState<PlayableVideo | null>(null);
   const startedRef = useRef(false);
   const finishedRef = useRef(false);
 
@@ -574,6 +601,7 @@ function Workout() {
   useEffect(() => {
     if (restSeconds === null) return;
     if (restSeconds <= 0) {
+      playRestChime();
       setRestSeconds(null);
       return;
     }
@@ -585,45 +613,45 @@ function Workout() {
     if (assignment && totalSets > 0 && completedSets >= totalSets && !finishedRef.current) {
       finishedRef.current = true;
       completeAssignment.mutate(assignment.id);
-      toast.success("Workout complete. Great session!");
+      toast.success(t("client.workout.complete"));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completedSets, totalSets]);
 
   if (loadingToday || isLoading) {
-    return <p className="p-6 text-sm text-muted-foreground">Loading your session...</p>;
+    return <p className="p-6 text-sm text-muted-foreground">{t("client.workout.loading")}</p>;
   }
   if (!todayAssignment || !assignment) {
     return (
-      <div className="panel p-10 text-center">
-        <p className="text-sm text-muted-foreground">No workout scheduled for today.</p>
-        <Link to="/client/dashboard">
-          <Button variant="outline" className="mt-4">
-            Back to dashboard
-          </Button>
-        </Link>
-      </div>
+      <EmptyState
+        action={
+          <Link to="/client/dashboard">
+            <Button variant="outline">{t("client.workout.back")}</Button>
+          </Link>
+        }
+      >
+        {t("client.workout.none")}
+      </EmptyState>
     );
   }
 
-  const workoutTitle = assignment.workouts?.title ?? "Workout";
+  const workoutTitle = assignment.workouts?.title ?? t("common.workout");
   const next = workoutExercises[active + 1];
+  const videoUrl = activeExercise?.exercises?.video_url;
 
   return (
     <>
       <div className="session-top">
         <div>
-          <p className="eyebrow">ACTIVE SESSION · {elapsed} MIN ELAPSED</p>
+          <p className="eyebrow">{t("client.workout.active", { count: elapsed })}</p>
           <h1>{workoutTitle}</h1>
         </div>
         <div className="session-progress">
-          <span>
-            {completedSets}/{totalSets} SETS
-          </span>
+          <span>{t("client.workout.sets", { done: completedSets, total: totalSets })}</span>
           <ProgressBar value={pct} />
         </div>
         <Button variant="outline" onClick={() => navigate({ to: "/client/dashboard" })}>
-          Exit
+          {t("client.workout.exit")}
         </Button>
       </div>
       <div className="workout-session">
@@ -638,10 +666,8 @@ function Workout() {
               >
                 <span>{done === e.sets ? <Check /> : i + 1}</span>
                 <div>
-                  <b>{e.exercises?.name ?? "Exercise"}</b>
-                  <small>
-                    {done} / {e.sets} sets
-                  </small>
+                  <b>{e.exercises?.name ?? t("common.exercise")}</b>
+                  <small>{t("client.workout.setsOf", { done, total: e.sets })}</small>
                 </div>
               </button>
             );
@@ -657,44 +683,47 @@ function Workout() {
                   }
                   width={1600}
                   height={912}
-                  alt="Exercise demonstration"
+                  alt={t("client.workout.demoAlt")}
                 />
-                {activeExercise.exercises?.video_url ? (
-                  <a
-                    href={activeExercise.exercises.video_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="play-button"
-                  >
-                    <Play fill="currentColor" />
-                  </a>
-                ) : (
-                  <button className="play-button" disabled>
-                    <Play fill="currentColor" />
-                  </button>
-                )}
+                <button
+                  className="play-button"
+                  disabled={!videoUrl}
+                  aria-label={t("client.workout.playDemo")}
+                  onClick={() =>
+                    videoUrl &&
+                    setPlaying({
+                      title: activeExercise.exercises?.name ?? t("common.exercise"),
+                      url: videoUrl,
+                    })
+                  }
+                >
+                  <Play fill="currentColor" />
+                </button>
               </div>
               <div className="exercise-detail">
                 <p className="eyebrow">
-                  EXERCISE {active + 1} OF {workoutExercises.length}
+                  {t("client.workout.exerciseOf", {
+                    n: active + 1,
+                    total: workoutExercises.length,
+                  })}
                 </p>
-                <h2>{activeExercise.exercises?.name ?? "Exercise"}</h2>
+                <h2>{activeExercise.exercises?.name ?? t("common.exercise")}</h2>
                 {activeExercise.exercises?.instructions && (
                   <p>{activeExercise.exercises.instructions}</p>
                 )}
                 <div className="prescription">
                   <div>
-                    <small>SETS × REPS</small>
+                    <small>{t("client.workout.setsReps")}</small>
                     <b>
                       {activeExercise.sets} × {activeExercise.reps}
                     </b>
                   </div>
                   <div>
-                    <small>LOAD</small>
+                    <small>{t("client.workout.load")}</small>
                     <b>{activeExercise.load ?? "—"}</b>
                   </div>
                   <div>
-                    <small>REST</small>
+                    <small>{t("client.workout.rest")}</small>
                     <b>{activeExercise.rest_seconds ? `${activeExercise.rest_seconds}s` : "—"}</b>
                   </div>
                 </div>
@@ -710,27 +739,34 @@ function Workout() {
                   className="w-full"
                   disabled={setsForActive >= activeExercise.sets || logSet.isPending}
                   onClick={() => {
-                    logSet.mutate({
-                      assignment_id: assignment.id,
-                      workout_exercise_id: activeExercise.id,
-                      set_number: setsForActive + 1,
-                    });
+                    unlockChimeAudio();
+                    logSet.mutate(
+                      {
+                        assignment_id: assignment.id,
+                        workout_exercise_id: activeExercise.id,
+                        set_number: setsForActive + 1,
+                      },
+                      {
+                        onError: (err) =>
+                          toast.error(errorText(err, i18n, "client.workout.logFailed")),
+                      },
+                    );
                     setRestSeconds(activeExercise.rest_seconds ?? 60);
                   }}
                 >
-                  Complete set <Check />
+                  {t("client.workout.completeSet")} <Check />
                 </Button>
               </div>
             </main>
             <aside className="rest-panel">
               <Timer />
-              <p className="eyebrow">REST TIMER</p>
-              <b>
+              <p className="eyebrow">{t("client.workout.restTimer")}</p>
+              <b dir="ltr">
                 {restSeconds != null
                   ? `${String(Math.floor(restSeconds / 60)).padStart(2, "0")}:${String(restSeconds % 60).padStart(2, "0")}`
                   : "00:00"}
               </b>
-              <div className="flex gap-2">
+              <div className="flex gap-2" dir="ltr">
                 <Button
                   variant="outline"
                   size="sm"
@@ -739,7 +775,7 @@ function Workout() {
                   -15
                 </Button>
                 <Button size="sm" onClick={() => setRestSeconds(null)}>
-                  Skip
+                  {t("client.workout.skip")}
                 </Button>
                 <Button
                   variant="outline"
@@ -750,23 +786,31 @@ function Workout() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {next ? `Next: ${next.exercises?.name ?? "Exercise"}` : "Last exercise"}
+                {next
+                  ? t("client.workout.next", { name: next.exercises?.name ?? t("common.exercise") })
+                  : t("client.workout.last")}
               </p>
             </aside>
           </>
         )}
       </div>
+      <VideoPlayerDialog video={playing} onClose={() => setPlaying(null)} />
     </>
   );
 }
 function Nutrition() {
+  const { t, fmt } = useI18n();
   const { user } = useAuth();
-  const { data: plan, isLoading } = useNutritionPlan();
+  const { data: plans, isLoading } = useMyNutritionPlans();
+  const { data: todayAssignment } = useTodayAssignment();
   const today = isoDate();
   const { data: logs } = useMealLogs(user?.id, today);
   const toggleMeal = useToggleMealLog();
   const { data: coach } = useMyCoach();
+  const [pickedId, setPickedId] = useState<string | null>(null);
 
+  const all = plans ?? [];
+  const plan = all.find((p) => p.id === pickedId) ?? planForDay(all, !!todayAssignment);
   const meals = plan?.meals ?? [];
   const doneMealIds = new Set((logs ?? []).filter((l) => l.completed).map((l) => l.meal_id));
   const totals = meals.reduce(
@@ -781,29 +825,40 @@ function Nutrition() {
     { kcal: 0, protein: 0, carbs: 0, fat: 0 },
   );
 
-  if (isLoading) return <p className="p-6 text-sm text-muted-foreground">Loading your plan...</p>;
-  if (!plan) {
-    return (
-      <div className="panel p-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          Your coach hasn't set up a nutrition plan yet.
-        </p>
-      </div>
-    );
-  }
+  if (isLoading)
+    return <p className="p-6 text-sm text-muted-foreground">{t("client.nutrition.loading")}</p>;
+  if (!plan) return <EmptyState>{t("client.nutrition.none")}</EmptyState>;
 
   return (
     <>
       <PageHead
-        eyebrow={new Date().toLocaleDateString(undefined, { weekday: "long" })}
-        title="Eat to perform."
-        subtitle="Clear timing. No guesswork. Built around today's training."
+        eyebrow={fmt.date(new Date(), { weekday: "long" })}
+        title={t("client.nutrition.title")}
+        subtitle={t("client.nutrition.subtitle")}
       />
+      {all.length > 1 && (
+        <div className="toolbar">
+          <div className="segmented scroll" aria-label={t("client.nutrition.yourPlans")}>
+            {all.map((p) => (
+              <button
+                key={p.id}
+                className={plan.id === p.id ? "selected" : ""}
+                onClick={() => setPickedId(p.id)}
+              >
+                {p.name}
+                {["training", "rest", "any"].includes(p.day_type)
+                  ? ` · ${t(`dayType.${p.day_type as DayType}`)}`
+                  : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <section className="nutrition-daily">
         <div>
-          <p className="eyebrow">Daily energy</p>
+          <p className="eyebrow">{t("client.nutrition.dailyEnergy")}</p>
           <strong>{totals.kcal}</strong>
-          <span>/ {plan.target_calories} kcal</span>
+          <span>{t("client.nutrition.ofKcal", { count: plan.target_calories })}</span>
           <ProgressBar
             value={plan.target_calories ? (totals.kcal / plan.target_calories) * 100 : 0}
           />
@@ -816,12 +871,17 @@ function Nutrition() {
           ].map((x) => (
             <div key={x[0] as string}>
               <span>{x[0]}</span>
-              <b>{x[1]}g</b>
-              <small>of {x[2]}g</small>
+              <b>{t("client.nutrition.grams", { count: x[1] as number })}</b>
+              <small>{t("client.nutrition.ofGrams", { count: x[2] as number })}</small>
             </div>
           ))}
         </div>
       </section>
+      {plan.notes && (
+        <p className="panel mt-4 whitespace-pre-wrap p-4 text-sm text-muted-foreground">
+          {plan.notes}
+        </p>
+      )}
       <div className="meal-list mt-8">
         {meals.map((m: MealRow, i: number) => {
           const done = doneMealIds.has(m.id);
@@ -835,14 +895,14 @@ function Nutrition() {
               <span className={`task-check ${done ? "checked" : ""}`}>
                 {done ? <Check /> : <Utensils />}
               </span>
-              <div className="flex-1 text-left">
-                <p className="eyebrow">MEAL {i + 1}</p>
+              <div className="flex-1 text-start">
+                <p className="eyebrow">{t("client.nutrition.mealN", { n: i + 1 })}</p>
                 <h3>{m.name}</h3>
-                <p>{m.foods_summary ?? "No foods listed"}</p>
+                <p>{m.foods_summary ?? t("client.nutrition.noFoods")}</p>
               </div>
               <div className="meal-macros">
                 <b>{m.calories}</b>
-                <small>KCAL</small>
+                <small>{t("common.kcalUpper")}</small>
               </div>
               <ChevronRight />
             </button>
@@ -854,10 +914,11 @@ function Nutrition() {
           <span className="avatar-md">{initialsFromName(coach.full_name)}</span>
           <div>
             <b>{coach.full_name}</b>
-            <p>Have a nutrition question? Send a message and get a personal answer.</p>
+            <p>{t("client.nutrition.coachQuestion")}</p>
             <Link to="/client/messages">
               <button>
-                Message {coach.full_name.split(" ")[0]} <ChevronRight />
+                {t("client.dashboard.messageName", { name: coach.full_name.split(" ")[0] ?? "" })}{" "}
+                <ChevronRight />
               </button>
             </Link>
           </div>
@@ -867,6 +928,8 @@ function Nutrition() {
   );
 }
 function Progress() {
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
   const stats = useClientStats();
   const completion = useCompletionStats(30);
   const { data: entries } = useProgressEntries();
@@ -874,59 +937,71 @@ function Progress() {
   const logProgress = useLogProgressEntry();
   const [weight, setWeight] = useState("");
 
-  const trend = (entries ?? []).slice(-7).map((e) => ({
-    day: formatDay(e.entry_date),
-    value: e.weight_kg ?? 0,
-  }));
+  const trend = (entries ?? [])
+    .filter((e) => e.weight_kg != null)
+    .slice(-7)
+    .map((e) => ({
+      day: fmt.weekday(parseIsoDate(e.entry_date)),
+      value: Number(e.weight_kg),
+    }));
 
   const onLogWeight = async () => {
-    if (!weight) return;
+    const value = Number(weight);
+    if (!weight || !(value > 0 && value <= 500)) {
+      toast.error(t("validation.weight"));
+      return;
+    }
     try {
-      await logProgress.mutateAsync({ weight_kg: Number(weight) });
-      toast.success("Weight logged.");
+      await logProgress.mutateAsync({ weight_kg: value });
+      toast.success(t("client.progress.logged"));
       setWeight("");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't log that weight.");
+      toast.error(errorText(err, i18n, "client.progress.logFailed"));
     }
   };
 
   return (
     <>
       <PageHead
-        eyebrow="Your data"
-        title="Proof of the work."
-        subtitle="You are not chasing perfect days. You are building undeniable consistency."
+        eyebrow={t("client.progress.eyebrow")}
+        title={t("client.progress.title")}
+        subtitle={t("client.progress.subtitle")}
       />
       <div className="progress-hero">
         <div>
-          <p className="eyebrow">CURRENT STREAK</p>
+          <p className="eyebrow">{t("client.progress.currentStreak")}</p>
           <strong>{stats.data?.streakDays ?? 0}</strong>
-          <span>DAYS</span>
+          <span>{t("client.progress.days")}</span>
           <Flame />
         </div>
         <div>
-          <p className="eyebrow">LAST 30 DAYS</p>
-          <h2>{completion.data?.pct ?? 0}% consistent.</h2>
+          <p className="eyebrow">{t("client.progress.last30")}</p>
+          <h2>{t("client.progress.consistent", { pct: completion.data?.pct ?? 0 })}</h2>
           <p>
-            {completion.data?.done ?? 0} of {completion.data?.total ?? 0} planned actions complete.
+            {t("client.progress.actionsComplete", {
+              done: completion.data?.done ?? 0,
+              total: completion.data?.total ?? 0,
+            })}
           </p>
         </div>
       </div>
       <div className="content-grid mt-8">
         <div className="chart-panel">
           <SectionTitle
-            overline="Body weight"
-            title="Trend"
+            overline={t("client.progress.bodyWeight")}
+            title={t("client.progress.trend")}
             action={
               <div className="flex gap-2">
                 <Input
                   className="h-8 w-20"
-                  placeholder="kg"
+                  type="number"
+                  inputMode="decimal"
+                  placeholder={t("client.progress.kg")}
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                 />
                 <Button size="sm" onClick={onLogWeight} disabled={logProgress.isPending}>
-                  Log
+                  {t("client.progress.log")}
                 </Button>
               </div>
             }
@@ -934,7 +1009,7 @@ function Progress() {
           <div className="h-64">
             {trend.length < 2 ? (
               <div className="grid h-full place-items-center text-sm text-muted-foreground">
-                Log your weight a few times to see a trend.
+                {t("client.progress.needMore")}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -947,8 +1022,16 @@ function Progress() {
                   </defs>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
                   <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 4,
+                    }}
+                  />
                   <Area
                     dataKey="value"
+                    name={t("client.progress.bodyWeight")}
                     stroke="var(--primary)"
                     fill="url(#clientArea)"
                     strokeWidth={3}
@@ -959,18 +1042,23 @@ function Progress() {
           </div>
         </div>
         <div className="panel p-6">
-          <SectionTitle overline="Personal records" title="Strength gains" />
+          <SectionTitle
+            overline={t("client.progress.prs")}
+            title={t("client.progress.strengthGains")}
+          />
           {(records ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">No personal records logged yet.</p>
+            <p className="text-sm text-muted-foreground">{t("client.progress.noPrs")}</p>
           )}
           {(records ?? []).map((r) => (
             <div className="pr-row" key={r.id}>
               <div>
                 <b>{r.exercise_name}</b>
-                <small>PERSONAL BEST</small>
+                <small>{t("client.progress.personalBest")}</small>
               </div>
               <strong>{r.value}</strong>
-              {r.previous_value && <span>was {r.previous_value}</span>}
+              {r.previous_value && (
+                <span>{t("client.progress.was", { value: r.previous_value })}</span>
+              )}
             </div>
           ))}
         </div>
@@ -979,62 +1067,93 @@ function Progress() {
   );
 }
 function Calendar() {
+  const { t, fmt } = useI18n();
   const now = new Date();
+  const [month, setMonth] = useState(() => startOfMonth(now));
+  const isCurrentMonth =
+    month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth();
   const [selected, setSelected] = useState(now.getDate());
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const from = monthStart.toISOString().slice(0, 10);
-  const to = monthEnd.toISOString().slice(0, 10);
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const from = isoDate(monthStart);
+  const to = isoDate(monthEnd);
   const { data: assignments } = useClientAssignments(from, to);
   const { data: meetings } = useMeetings();
+  const { data: events } = useMyScheduleEvents(from, to);
+  const [openMeeting, setOpenMeeting] = useState<MeetingWithOther | null>(null);
 
   const leadingBlanks = (monthStart.getDay() + 6) % 7; // Monday-first grid
   const daysInMonth = monthEnd.getDate();
-  const eventDays = new Set((assignments ?? []).map((a) => new Date(a.scheduled_date).getDate()));
-  const selectedKey = new Date(now.getFullYear(), now.getMonth(), selected)
-    .toISOString()
-    .slice(0, 10);
+  const monthMeetings = (meetings ?? []).filter(
+    (m) =>
+      m.status !== "cancelled" &&
+      isoDate(new Date(m.scheduled_at)).slice(0, 7) === from.slice(0, 7),
+  );
+  const eventDays = new Set([
+    ...(assignments ?? []).map((a) => parseIsoDate(a.scheduled_date).getDate()),
+    ...monthMeetings.map((m) => new Date(m.scheduled_at).getDate()),
+    ...(events ?? []).map((e) => new Date(e.starts_at).getDate()),
+  ]);
+  const selectedDate = new Date(month.getFullYear(), month.getMonth(), selected);
+  const selectedKey = isoDate(selectedDate);
   const dayAssignments = (assignments ?? []).filter((a) => a.scheduled_date === selectedKey);
-  const dayMeetings = (meetings ?? []).filter(
-    (m) => new Date(m.scheduled_at).toISOString().slice(0, 10) === selectedKey,
+  const dayMeetings = monthMeetings.filter(
+    (m) => isoDate(new Date(m.scheduled_at)) === selectedKey,
   );
-  const monthLabel = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const selectedLabel = new Date(now.getFullYear(), now.getMonth(), selected).toLocaleDateString(
-    undefined,
-    {
-      weekday: "long",
-    },
+  const dayEvents = (events ?? []).filter((e) => isoDate(new Date(e.starts_at)) === selectedKey);
+  const monthLabel = fmt.date(month, { month: "long", year: "numeric" });
+  const selectedLabel = fmt.date(selectedDate, { weekday: "long" });
+  // Monday-first single-letter weekday headers in the current language.
+  const weekdayLabels = weekDates(new Date(2024, 0, 1)).map((d) =>
+    fmt.date(d, { weekday: "narrow" }),
   );
+
+  const shiftMonth = (direction: 1 | -1) => {
+    const next = new Date(month.getFullYear(), month.getMonth() + direction, 1);
+    setMonth(next);
+    const sameAsNow =
+      next.getFullYear() === now.getFullYear() && next.getMonth() === now.getMonth();
+    setSelected(sameAsNow ? now.getDate() : 1);
+  };
 
   return (
     <>
       <PageHead
         eyebrow={monthLabel}
-        title="Your calendar"
-        subtitle="Training, fuel, recovery, and coaching — one rhythm."
+        title={t("client.calendar.title")}
+        subtitle={t("client.calendar.subtitle")}
       />
       <div className="calendar-mobile-head">
-        <button className="icon-button" disabled>
+        <button
+          className="icon-button"
+          onClick={() => shiftMonth(-1)}
+          aria-label={t("client.calendar.prevMonth")}
+        >
           <ChevronLeft />
         </button>
         <b>{monthLabel}</b>
-        <button className="icon-button" disabled>
+        <button
+          className="icon-button"
+          onClick={() => shiftMonth(1)}
+          aria-label={t("client.calendar.nextMonth")}
+        >
           <ChevronRight />
         </button>
       </div>
       <div className="month-grid">
-        {["M", "T", "W", "T", "F", "S", "S"].map((x, i) => (
+        {weekdayLabels.map((x, i) => (
           <span className="month-label" key={i}>
             {x}
           </span>
         ))}
         {Array.from({ length: leadingBlanks + daysInMonth }).map((_, i) => {
           const n = i - leadingBlanks + 1;
+          const isToday = isCurrentMonth && n === now.getDate();
           return (
             <button
               disabled={n < 1 || n > daysInMonth}
               onClick={() => setSelected(n)}
-              className={`${n === selected ? "selected" : ""} ${eventDays.has(n) ? "has-event" : ""}`}
+              className={`${n === selected ? "selected" : ""} ${eventDays.has(n) ? "has-event" : ""} ${isToday ? "is-today" : ""}`}
               key={i}
             >
               {n > 0 && n <= daysInMonth ? n : ""}
@@ -1044,12 +1163,12 @@ function Calendar() {
       </div>
       <section className="mt-8">
         <SectionTitle
-          overline={`${monthLabel.toUpperCase()} ${selected}`}
-          title={`${selectedLabel}'s plan`}
+          overline={fmt.date(selectedDate, { day: "numeric", month: "long", year: "numeric" })}
+          title={t("client.calendar.planFor", { day: selectedLabel })}
         />
         <div className="panel p-2">
-          {dayAssignments.length === 0 && dayMeetings.length === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">Nothing scheduled this day.</p>
+          {dayAssignments.length === 0 && dayMeetings.length === 0 && dayEvents.length === 0 && (
+            <p className="p-4 text-sm text-muted-foreground">{t("client.calendar.nothing")}</p>
           )}
           {dayAssignments.map((a) => {
             const workout = a.workouts as unknown as {
@@ -1059,8 +1178,11 @@ function Calendar() {
             return (
               <TaskRow
                 key={a.id}
-                title={workout?.title ?? "Workout"}
-                meta={`${a.scheduled_time?.slice(0, 5) ?? "Anytime"} · ${workout?.duration_minutes ?? "—"} minutes`}
+                title={workout?.title ?? t("common.workout")}
+                meta={t("client.calendar.minutesLine", {
+                  time: a.scheduled_time?.slice(0, 5) ?? t("task.anytime"),
+                  minutes: workout?.duration_minutes ?? "—",
+                })}
                 done={a.status === "completed"}
                 icon={<Dumbbell />}
               />
@@ -1070,20 +1192,38 @@ function Calendar() {
             <TaskRow
               key={m.id}
               title={m.title}
-              meta={`${formatClock(m.scheduled_at)} · Video call`}
-              done={false}
+              meta={t("client.calendar.videoCall", { time: fmt.clock(m.scheduled_at) })}
+              done={m.status === "completed"}
               icon={<Video />}
+              onClick={() => setOpenMeeting(m)}
+            />
+          ))}
+          {dayEvents.map((e) => (
+            <TaskRow
+              key={e.id}
+              title={e.title}
+              meta={`${t(`eventType.${e.event_type}`)} · ${t("common.timeRange", { start: fmt.clock(e.starts_at), end: fmt.clock(e.ends_at) })}${e.description ? ` · ${e.description}` : ""}`}
+              done={false}
+              icon={<CalendarDays />}
             />
           ))}
         </div>
       </section>
+      <MeetingDetailsDialog
+        meeting={openMeeting}
+        otherName={openMeeting?.other?.full_name ?? t("client.meetings.yourCoach")}
+        canEdit={false}
+        onClose={() => setOpenMeeting(null)}
+      />
     </>
   );
 }
 function Messages() {
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
   const [text, setText] = useState("");
   const { user } = useAuth();
-  const { data: coach } = useMyCoach();
+  const { data: coach, isLoading } = useMyCoach();
   const ensureConversation = useEnsureConversation();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const { data: messages } = useMessages(conversationId);
@@ -1091,7 +1231,10 @@ function Messages() {
 
   useEffect(() => {
     if (coach && !conversationId) {
-      ensureConversation.mutateAsync(coach.id).then(setConversationId);
+      ensureConversation
+        .mutateAsync(coach.id)
+        .then(setConversationId)
+        .catch((err) => toast.error(errorText(err, i18n, "errors.generic")));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coach?.id]);
@@ -1099,42 +1242,40 @@ function Messages() {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim() || !conversationId) return;
-    sendMessage.mutate({ conversationId, body: text.trim() });
+    sendMessage.mutate(
+      { conversationId, body: text.trim() },
+      { onError: (err) => toast.error(errorText(err, i18n, "messages.sendFailed")) },
+    );
     setText("");
   };
 
-  if (!coach) {
-    return (
-      <div className="panel p-10 text-center">
-        <p className="text-sm text-muted-foreground">You're not linked to a coach yet.</p>
-      </div>
-    );
-  }
+  if (isLoading) return <p className="p-6 text-sm text-muted-foreground">{t("common.loading")}</p>;
+  if (!coach) return <EmptyState>{t("client.notLinked")}</EmptyState>;
 
   return (
     <>
       <PageHead
-        eyebrow="Your coach"
+        eyebrow={t("client.messages.yourCoach")}
         title={coach.full_name}
-        subtitle="Performance coach"
+        subtitle={t("client.messages.performanceCoach")}
         action={
-          <Button variant="outline">
-            <Video />
-            Video call
-          </Button>
+          <Link to="/client/meetings">
+            <Button variant="outline">
+              <Video />
+              {t("client.messages.videoCall")}
+            </Button>
+          </Link>
         }
       />
       <section className="client-chat">
         <div className="chat-body">
-          {(messages ?? []).length === 0 && (
-            <p className="day-label">Say hello to start the conversation.</p>
-          )}
+          {(messages ?? []).length === 0 && <p className="day-label">{t("messages.sayHello")}</p>}
           {(messages ?? []).map((m) => (
             <div className={`bubble ${m.sender_id === user?.id ? "out" : "in"}`} key={m.id}>
               {m.body}
               <time>
-                {formatClock(m.created_at)}
-                {m.sender_id === user?.id && m.read_at ? " · Read" : ""}
+                {fmt.clock(m.created_at)}
+                {m.sender_id === user?.id && m.read_at ? ` · ${t("common.read")}` : ""}
               </time>
             </div>
           ))}
@@ -1146,9 +1287,9 @@ function Messages() {
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={`Message ${coach.full_name.split(" ")[0]}...`}
+            placeholder={t("messages.placeholder", { name: coach.full_name.split(" ")[0] ?? "" })}
           />
-          <Button type="submit" size="icon">
+          <Button type="submit" size="icon" aria-label={t("common.send")}>
             <Send />
           </Button>
         </form>
@@ -1157,82 +1298,122 @@ function Messages() {
   );
 }
 function Meetings() {
+  const { t, fmt } = useI18n();
   const { data } = useMeetings();
   const { data: coach } = useMyCoach();
-  const meetings = data ?? [];
+  const [openMeeting, setOpenMeeting] = useState<MeetingWithOther | null>(null);
+  const meetings = (data ?? []).filter((m) => m.status === "scheduled");
   const now = Date.now();
-  const next = meetings.find((m) => new Date(m.scheduled_at).getTime() >= now);
-  const upcoming = meetings.filter((m) => m.id !== next?.id);
+  const upcomingAll = meetings.filter(
+    (m) => new Date(m.scheduled_at).getTime() + m.duration_minutes * 60_000 >= now,
+  );
+  const next = upcomingAll[0];
+  const upcoming = upcomingAll.slice(1);
   const minutesUntil = next ? Math.round((new Date(next.scheduled_at).getTime() - now) / 60000) : 0;
+  const coachName = coach?.full_name || t("client.meetings.yourCoach");
+  const nextLink = next && isHttpUrl(next.video_url) ? next.video_url : null;
 
   return (
     <>
       <PageHead
-        eyebrow="Coaching room"
-        title="Meetings"
-        subtitle="Your next chance to reflect, adjust, and move forward."
+        eyebrow={t("client.meetings.eyebrow")}
+        title={t("client.meetings.title")}
+        subtitle={t("client.meetings.subtitle")}
       />
       {next ? (
         <section className="meeting-feature client">
           <div className="date-big">
             <b>{new Date(next.scheduled_at).getDate()}</b>
-            <span>
-              {new Date(next.scheduled_at)
-                .toLocaleDateString(undefined, { month: "short" })
-                .toUpperCase()}
-            </span>
+            <span>{fmt.month(next.scheduled_at)}</span>
           </div>
           <div>
             <span className="live-chip">
               <Clock3 />
-              {minutesUntil <= 0 ? "IN PROGRESS" : `TODAY · ${formatClock(next.scheduled_at)}`}
+              {minutesUntil <= 0
+                ? t("meeting.inProgress")
+                : t("meeting.onDate", {
+                    date:
+                      isoDate(new Date(next.scheduled_at)) === isoDate()
+                        ? t("common.today")
+                        : fmt.date(next.scheduled_at, {
+                            weekday: "short",
+                            day: "numeric",
+                            month: "short",
+                          }),
+                    time: fmt.clock(next.scheduled_at),
+                  })}
             </span>
             <h2>{next.title}</h2>
-            <p>{next.notes || `With ${coach?.full_name ?? "your coach"}`}</p>
-            <div className="mt-5 flex gap-3">
-              <Button>
-                <Video />
-                Join at {formatClock(next.scheduled_at)}
+            <p>{next.notes || t("client.meetings.withCoach", { name: coachName })}</p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              {nextLink ? (
+                <a href={nextLink} target="_blank" rel="noreferrer">
+                  <Button>
+                    <Video />
+                    {t("client.meetings.joinAt", { time: fmt.clock(next.scheduled_at) })}
+                  </Button>
+                </a>
+              ) : (
+                <Button disabled>
+                  <Video />
+                  {t("meeting.linkPending")}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setOpenMeeting(next)}>
+                {t("client.meetings.notes")}
               </Button>
-              <Button variant="outline">Meeting notes</Button>
             </div>
           </div>
         </section>
       ) : (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">No meetings scheduled yet.</p>
-        </div>
+        <EmptyState>{t("client.meetings.empty")}</EmptyState>
       )}
       <section className="mt-8">
-        <SectionTitle overline="Scheduled" title="Coming up" />
+        <SectionTitle
+          overline={t("client.meetings.scheduled")}
+          title={t("client.meetings.comingUp")}
+        />
         <div className="panel divide-y divide-border">
           {upcoming.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">Nothing else on the calendar.</p>
+            <p className="p-6 text-sm text-muted-foreground">{t("client.meetings.nothingElse")}</p>
           )}
           {upcoming.map((m) => {
             const d = new Date(m.scheduled_at);
             return (
-              <div className="appointment" key={m.id}>
+              <button
+                className="appointment w-full text-start"
+                key={m.id}
+                onClick={() => setOpenMeeting(m)}
+              >
                 <time>
                   <b>{d.getDate()}</b>
-                  <span>{d.toLocaleDateString(undefined, { month: "short" }).toUpperCase()}</span>
+                  <span>{fmt.month(d)}</span>
                 </time>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <b>{m.title}</b>
                   <p>
-                    {formatClock(m.scheduled_at)} · With {coach?.full_name ?? "your coach"}
+                    {fmt.clock(m.scheduled_at)} ·{" "}
+                    {t("client.meetings.withCoach", { name: coachName })}
                   </p>
                 </div>
                 <ChevronRight />
-              </div>
+              </button>
             );
           })}
         </div>
       </section>
+      <MeetingDetailsDialog
+        meeting={openMeeting}
+        otherName={coachName}
+        canEdit={false}
+        onClose={() => setOpenMeeting(null)}
+      />
     </>
   );
 }
 function CheckIns() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { data: coach } = useMyCoach();
   const submitCheckIn = useSubmitCheckIn();
   const uploadPhotos = useUploadCheckInPhotos();
@@ -1245,7 +1426,11 @@ function CheckIns() {
 
   const onSubmit = async () => {
     if (!coach) {
-      toast.error("You're not linked to a coach yet.");
+      toast.error(t("client.notLinked"));
+      return;
+    }
+    if (weight && !(Number(weight) > 0 && Number(weight) <= 500)) {
+      toast.error(t("validation.weight"));
       return;
     }
     try {
@@ -1262,50 +1447,59 @@ function CheckIns() {
           files: [{ file: photo, angle: "front" }],
         });
       }
-      toast.success("Check-in submitted.");
+      toast.success(t("client.checkins.submitted"));
       setSubmitted(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't submit your check-in.");
+      toast.error(errorText(err, i18n, "client.checkins.failed"));
     }
   };
 
   if (submitted) {
     return (
-      <div className="panel p-10 text-center">
-        <p className="text-sm text-muted-foreground">
-          Check-in submitted. {coach?.full_name ?? "Your coach"} will review it soon.
-        </p>
-      </div>
+      <EmptyState>
+        {t("client.checkins.submittedBody", {
+          name: coach?.full_name ?? t("client.checkins.yourCoach"),
+        })}
+      </EmptyState>
     );
   }
+
+  const sleepOptions: [SleepQuality, typeof Moon][] = [
+    ["poor", Moon],
+    ["okay", Circle],
+    ["strong", Zap],
+  ];
 
   return (
     <>
       <PageHead
-        eyebrow="Weekly reflection"
-        title="Check in with yourself."
-        subtitle="Honest signals help your coach coach the person, not just the program."
+        eyebrow={t("client.checkins.eyebrow")}
+        title={t("client.checkins.title")}
+        subtitle={t("client.checkins.subtitle")}
       />
       <div className="checkin-form">
         <section>
-          <p className="eyebrow">01 · BODY</p>
-          <h2>Where are you today?</h2>
+          <p className="eyebrow">{t("client.checkins.body")}</p>
+          <h2>{t("client.checkins.whereToday")}</h2>
           <label>
-            Current weight{" "}
+            {t("client.checkins.currentWeight")}{" "}
             <div className="unit-input">
               <Input
+                type="number"
+                inputMode="decimal"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
                 placeholder="62.4"
               />
-              <span>KG</span>
+              <span>{t("client.checkins.kg")}</span>
             </div>
           </label>
           <label>
-            Energy{" "}
-            <div className="number-scale">
+            {t("client.checkins.energy")}{" "}
+            <div className="number-scale" dir="ltr">
               {Array.from({ length: 10 }).map((_, i) => (
                 <button
+                  type="button"
                   onClick={() => setEnergy(i + 1)}
                   className={energy === i + 1 ? "active" : ""}
                   key={i}
@@ -1316,52 +1510,39 @@ function CheckIns() {
             </div>
           </label>
           <label>
-            Sleep quality{" "}
+            {t("client.checkins.sleepQuality")}{" "}
             <div className="mood-row">
-              <button
-                type="button"
-                className={sleepQuality === "poor" ? "active" : ""}
-                onClick={() => setSleepQuality("poor")}
-              >
-                <Moon size={19} />
-                <span>Poor</span>
-              </button>
-              <button
-                type="button"
-                className={sleepQuality === "okay" ? "active" : ""}
-                onClick={() => setSleepQuality("okay")}
-              >
-                <Circle size={19} />
-                <span>Okay</span>
-              </button>
-              <button
-                type="button"
-                className={sleepQuality === "strong" ? "active" : ""}
-                onClick={() => setSleepQuality("strong")}
-              >
-                <Zap size={19} />
-                <span>Strong</span>
-              </button>
+              {sleepOptions.map(([value, Icon]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={sleepQuality === value ? "active" : ""}
+                  onClick={() => setSleepQuality(value)}
+                >
+                  <Icon size={19} />
+                  <span>{t(`sleep.${value}`)}</span>
+                </button>
+              ))}
             </div>
           </label>
         </section>
         <section>
-          <p className="eyebrow">02 · REFLECT</p>
-          <h2>Tell your coach more.</h2>
+          <p className="eyebrow">{t("client.checkins.reflect")}</p>
+          <h2>{t("client.checkins.tellMore")}</h2>
           <label>
-            How did training feel?
+            {t("client.checkins.howTraining")}
             <textarea
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
-              placeholder="Share wins, challenges, or anything your coach should know..."
+              placeholder={t("client.checkins.feedbackPlaceholder")}
             />
           </label>
           <label>
-            Progress photos
+            {t("client.checkins.photos")}
             <label className="photo-upload" htmlFor="checkin-photo">
               <Camera />
-              <b>{photo ? photo.name : "Add progress photos"}</b>
-              <span>Front, side and back</span>
+              <b>{photo ? photo.name : t("client.checkins.addPhotos")}</b>
+              <span>{t("client.checkins.photoAngles")}</span>
               <input
                 id="checkin-photo"
                 type="file"
@@ -1375,40 +1556,49 @@ function CheckIns() {
             size="lg"
             className="w-full"
             onClick={onSubmit}
-            disabled={submitCheckIn.isPending}
+            disabled={submitCheckIn.isPending || uploadPhotos.isPending}
           >
-            {submitCheckIn.isPending ? "Submitting..." : "Submit weekly check-in"} <Check />
+            {submitCheckIn.isPending || uploadPhotos.isPending
+              ? t("client.checkins.submitting")
+              : t("client.checkins.submit")}{" "}
+            <Check />
           </Button>
         </section>
       </div>
     </>
   );
 }
-const clientSettingsTabs = ["Profile", "Notifications"] as const;
+const clientSettingsTabs = [
+  ["profile", "settings.tab.profile"],
+  ["notifications", "settings.tab.notifications"],
+] as const;
 function Settings() {
-  const [tab, setTab] = useState<(typeof clientSettingsTabs)[number]>("Profile");
+  const { t } = useI18n();
+  const [tab, setTab] = useState<(typeof clientSettingsTabs)[number][0]>("profile");
   return (
     <>
       <PageHead
-        eyebrow="Your account"
-        title="Settings"
-        subtitle="Make iCoach work around your training life."
+        eyebrow={t("settings.eyebrowClient")}
+        title={t("settings.title")}
+        subtitle={t("settings.subtitleClient")}
       />
       <div className="settings-layout">
         <nav>
-          {clientSettingsTabs.map((x) => (
-            <button className={tab === x ? "active" : ""} key={x} onClick={() => setTab(x)}>
-              {x}
+          {clientSettingsTabs.map(([key, labelKey]) => (
+            <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
+              {t(labelKey)}
               <ChevronRight />
             </button>
           ))}
         </nav>
-        {tab === "Profile" ? <ClientProfileSettingsPanel /> : <ClientNotificationSettingsPanel />}
+        {tab === "profile" ? <ClientProfileSettingsPanel /> : <ClientNotificationSettingsPanel />}
       </div>
     </>
   );
 }
 function ClientProfileSettingsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { profile } = useAuth();
   const updateProfile = useUpdateProfile();
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
@@ -1416,23 +1606,27 @@ function ClientProfileSettingsPanel() {
   const [phone, setPhone] = useState(profile?.phone ?? "");
 
   const save = async () => {
+    if (!fullName.trim()) {
+      toast.error(t("validation.yourName"));
+      return;
+    }
     try {
-      await updateProfile.mutateAsync({ full_name: fullName, goal, phone });
-      toast.success("Profile updated.");
+      await updateProfile.mutateAsync({ full_name: fullName.trim(), goal, phone });
+      toast.success(t("settings.profileUpdated"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save your profile.");
+      toast.error(errorText(err, i18n, "settings.profileFailed"));
     }
   };
 
   return (
     <div className="space-y-6">
       <section className="settings-panel">
-        <p className="eyebrow">Your details</p>
-        <h2>Athlete profile</h2>
-        <p className="text-sm text-muted-foreground">This is how your coach sees you.</p>
+        <p className="eyebrow">{t("settings.yourDetails")}</p>
+        <h2>{t("settings.athleteProfile")}</h2>
+        <p className="text-sm text-muted-foreground">{t("settings.athleteProfileBody")}</p>
         <div className="setting-row">
           <div className="w-full">
-            <b>Full name</b>
+            <b>{t("settings.fullName")}</b>
             <Input
               className="mt-2"
               value={fullName}
@@ -1442,23 +1636,28 @@ function ClientProfileSettingsPanel() {
         </div>
         <div className="setting-row">
           <div className="w-full">
-            <b>Primary goal</b>
+            <b>{t("settings.primaryGoal")}</b>
             <Input
               className="mt-2"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Build strength"
+              placeholder={t("settings.goalPlaceholder")}
             />
           </div>
         </div>
         <div className="setting-row">
           <div className="w-full">
-            <b>Phone</b>
-            <Input className="mt-2" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <b>{t("settings.phone")}</b>
+            <Input
+              className="mt-2"
+              dir="ltr"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
         </div>
         <Button className="mt-6" onClick={save} disabled={updateProfile.isPending}>
-          {updateProfile.isPending ? "Saving..." : "Save profile"}
+          {updateProfile.isPending ? t("common.saving") : t("settings.saveProfile")}
         </Button>
       </section>
       <ChangePasswordCard />
@@ -1466,29 +1665,33 @@ function ClientProfileSettingsPanel() {
   );
 }
 function ClientNotificationSettingsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { profile } = useAuth();
   const updatePrefs = useUpdateNotificationPrefs();
   const prefs = profile?.notification_prefs ?? {};
-  const rows: [string, string, string][] = [
-    ["push", "Push notifications", "Workout, schedule and coach updates"],
-    ["coachMessages", "Coach messages", "Alert me when my coach sends a message"],
-    ["workoutReminders", "Workout reminders", "30 minutes before planned sessions"],
-    ["meetingReminders", "Meeting reminders", "One hour before coach meetings"],
-  ];
-  const toggle = (key: string, value: boolean) => updatePrefs.mutate({ ...prefs, [key]: value });
+  const rows = [
+    ["push", "notifPref.push", "notifPref.pushDesc"],
+    ["coachMessages", "notifPref.coachMessages", "notifPref.coachMessagesDesc"],
+    ["workoutReminders", "notifPref.workoutReminders", "notifPref.workoutRemindersDesc"],
+    ["meetingReminders", "notifPref.meetingReminders", "notifPref.meetingRemindersDesc"],
+  ] as const;
+  const toggle = (key: string, value: boolean) =>
+    updatePrefs.mutate(
+      { ...prefs, [key]: value },
+      { onError: (err) => toast.error(errorText(err, i18n, "settings.prefsUpdateFailed")) },
+    );
 
   return (
     <section className="settings-panel">
-      <p className="eyebrow">Stay informed</p>
-      <h2>Notifications</h2>
-      <p className="text-sm text-muted-foreground">
-        Choose the moments you want iCoach to bring to your attention.
-      </p>
-      {rows.map(([key, label, desc]) => (
+      <p className="eyebrow">{t("settings.stayInformed")}</p>
+      <h2>{t("settings.notificationsTitle")}</h2>
+      <p className="text-sm text-muted-foreground">{t("settings.notificationsClientBody")}</p>
+      {rows.map(([key, labelKey, descKey]) => (
         <div className="setting-row" key={key}>
           <div>
-            <b>{label}</b>
-            <p>{desc}</p>
+            <b>{t(labelKey)}</b>
+            <p>{t(descKey)}</p>
           </div>
           <Switch checked={prefs[key] ?? true} onCheckedChange={(v) => toggle(key, v)} />
         </div>

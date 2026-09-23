@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
-import { startOfWeek } from "@/lib/format";
+import { isoDate, startOfWeek } from "@/lib/format";
 import type { PhotoAngle, SleepQuality } from "@/lib/database.types";
 
 export function useCoachCheckIns() {
@@ -57,7 +57,7 @@ export function useSubmitCheckIn() {
         .insert({
           ...input,
           client_id: user!.id,
-          week_start_date: startOfWeek().toISOString().slice(0, 10),
+          week_start_date: isoDate(startOfWeek()),
           status: "pending",
         })
         .select()
@@ -65,7 +65,10 @@ export function useSubmitCheckIn() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["check-ins-client"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-ins-client"] });
+      queryClient.invalidateQueries({ queryKey: ["check-in-this-week"] });
+    },
   });
 }
 
@@ -110,6 +113,10 @@ export function useReviewCheckIn() {
         .eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["check-ins-coach"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["check-ins-coach"] });
+      queryClient.invalidateQueries({ queryKey: ["check-ins-client"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-check-ins-count"] });
+    },
   });
 }

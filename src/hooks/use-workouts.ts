@@ -78,9 +78,15 @@ export function useUploadExerciseVideo() {
     }: {
       exerciseId?: string;
       file: File;
-      newExercise?: { name: string; category?: string };
+      newExercise?: { name: string; category?: string; durationSeconds?: number | null };
     }) => {
-      const path = `${user!.id}/${Date.now()}-${file.name}`;
+      // Keep the storage key URL-safe regardless of what the original file was called.
+      const extension = file.name.includes(".") ? file.name.split(".").pop() : "mp4";
+      const safeBase = file.name
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .slice(0, 60);
+      const path = `${user!.id}/${Date.now()}-${safeBase || "video"}.${extension}`;
       const { error: uploadError } = await supabase.storage.from("media").upload(path, file);
       if (uploadError) throw uploadError;
       const { data: publicUrl } = supabase.storage.from("media").getPublicUrl(path);
@@ -97,6 +103,7 @@ export function useUploadExerciseVideo() {
           name: newExercise.name,
           category: newExercise.category || null,
           video_url: publicUrl.publicUrl,
+          duration_seconds: newExercise.durationSeconds ?? null,
         });
         if (error) throw error;
       }
@@ -132,7 +139,7 @@ async function fetchCoachWorkouts(coachId: string) {
   const { data, error } = await supabase
     .from("workouts")
     .select(
-      "*, workout_exercises(id, order_index, sets, reps, load, rest_seconds, notes, exercises(id, name, video_url, thumbnail_url))",
+      "*, workout_exercises(id, order_index, sets, reps, load, rest_seconds, notes, exercises(id, name, video_url, thumbnail_url)), workout_assignments(count)",
     )
     .eq("coach_id", coachId)
     .order("created_at", { ascending: false });
@@ -172,6 +179,30 @@ export function useCreateWorkout() {
   });
 }
 
+/** Permanently deletes a workout template. Its exercise sequence and every assignment of it
+ *  (with the athletes' logged sets) are removed by FK cascade. */
+export function useDeleteWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("workouts").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_data, id) => {
+      // Drop it from the cached list right away so the studio never shows a deleted workout
+      // while the refetch is in flight.
+      queryClient.setQueriesData<{ id: string }[]>({ queryKey: ["workouts"] }, (old) =>
+        old?.filter((w) => w.id !== id),
+      );
+      queryClient.invalidateQueries({ queryKey: ["workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["coach-schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["client-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["coach-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["team-trend"] });
+    },
+  });
+}
+
 export function useUpdateWorkout() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -181,7 +212,7 @@ export function useUpdateWorkout() {
     }: {
       id: string;
       title?: string | undefined;
-      duration_minutes?: number | undefined;
+      duration_minutes?: number | null | undefined;
       notes?: string | undefined;
     }) => {
       const { error } = await supabase.from("workouts").update(patch).eq("id", id);
@@ -242,6 +273,9 @@ export function useAssignWorkout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
       queryClient.invalidateQueries({ queryKey: ["coach-roster"] });
+      queryClient.invalidateQueries({ queryKey: ["coach-schedule"] });
+      queryClient.invalidateQueries({ queryKey: ["client-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["workouts"] });
     },
   });
 }

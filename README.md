@@ -981,23 +981,12 @@ A generic AI-generated admin dashboard.
 
 Focus on quality of visual design, motion, interaction and overall product feeling above adding unnecessary features.
 
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/cac86c0e-f231-4b8f-b05b-91fbe221be26).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+You need Node.js 20+ and npm. See `DOCUMENTATION.md` for Supabase setup and deployment.
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+npm install
+cp .env.example .env   # then fill in your Supabase credentials
 npm run dev
 ```

@@ -3,8 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { computeStreak, useCoachRoster } from "./use-clients";
 import { useTodayAssignment } from "./use-workouts";
-import { useMealLogs, useNutritionPlan } from "./use-nutrition";
-import { formatDay, isoDate, startOfWeek } from "@/lib/format";
+import { planForDay, useMealLogs, useMyNutritionPlans } from "./use-nutrition";
+import { addDays, isoDate, startOfWeek } from "@/lib/format";
 
 /** Coach dashboard: composes the roster (already fetched) with meetings + a 7-day team trend. */
 export function useCoachDashboard() {
@@ -15,7 +15,7 @@ export function useCoachDashboard() {
     queryKey: ["team-trend", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const since = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+      const since = isoDate(addDays(new Date(), -6));
       const { data, error } = await supabase
         .from("workout_assignments")
         .select("scheduled_date, status")
@@ -29,13 +29,12 @@ export function useCoachDashboard() {
         if (row.status === "completed") entry.done += 1;
         byDate.set(row.scheduled_date, entry);
       }
+      // Raw local dates; the chart formats the weekday label in the viewer's language.
       return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
-        const key = d.toISOString().slice(0, 10);
-        const entry = byDate.get(key);
+        const date = isoDate(addDays(new Date(), i - 6));
+        const entry = byDate.get(date);
         const value = entry && entry.total > 0 ? Math.round((entry.done / entry.total) * 100) : 0;
-        return { day: formatDay(d.toISOString()), value, target: 75 };
+        return { date, value, target: 75 };
       });
     },
   });
@@ -49,7 +48,7 @@ export function useCoachDashboard() {
         .select("*, profiles:client_id(id, full_name, avatar_url)")
         .eq("coach_id", user!.id)
         .eq("status", "scheduled")
-        .gte("scheduled_at", new Date().toISOString())
+        .gte("scheduled_at", new Date(Date.now() - 60 * 60_000).toISOString())
         .order("scheduled_at")
         .limit(4);
       if (error) throw error;
@@ -94,7 +93,7 @@ export function useClientToday() {
   const { user } = useAuth();
   const today = isoDate();
   const assignment = useTodayAssignment();
-  const plan = useNutritionPlan();
+  const plans = useMyNutritionPlans();
   const mealLogs = useMealLogs(user?.id, today);
   const habitTargets = useQuery({
     queryKey: ["habit-targets", user?.id],
@@ -126,7 +125,7 @@ export function useClientToday() {
         .from("check_ins")
         .select("id")
         .eq("client_id", user!.id)
-        .eq("week_start_date", startOfWeek().toISOString().slice(0, 10))
+        .eq("week_start_date", isoDate(startOfWeek()))
         .maybeSingle();
       if (error) throw error;
       return !!data;
@@ -135,7 +134,7 @@ export function useClientToday() {
 
   const isLoading =
     assignment.isLoading ||
-    plan.isLoading ||
+    plans.isLoading ||
     mealLogs.isLoading ||
     habitTargets.isLoading ||
     habitLogs.isLoading;
@@ -143,7 +142,7 @@ export function useClientToday() {
   return {
     isLoading,
     assignment: assignment.data,
-    plan: plan.data,
+    plan: planForDay(plans.data ?? [], !!assignment.data),
     mealLogs: mealLogs.data ?? [],
     habitTargets: habitTargets.data ?? [],
     habitLogs: habitLogs.data ?? [],
@@ -158,7 +157,7 @@ export function useClientStats() {
     queryKey: ["client-stats", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const since = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+      const since = isoDate(addDays(new Date(), -60));
       const { data, error } = await supabase
         .from("workout_assignments")
         .select("scheduled_date, status")
@@ -166,7 +165,7 @@ export function useClientStats() {
         .gte("scheduled_date", since);
       if (error) throw error;
       const rows = data ?? [];
-      const weekAgo = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+      const weekAgo = isoDate(addDays(new Date(), -6));
       const thisWeek = rows.filter((r) => r.scheduled_date >= weekAgo);
       const weeklyCompletion = thisWeek.length
         ? Math.round(

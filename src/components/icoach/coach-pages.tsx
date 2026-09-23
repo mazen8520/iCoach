@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Area,
   AreaChart,
@@ -10,30 +10,27 @@ import {
   XAxis,
 } from "recharts";
 import {
-  CalendarDays,
   Check,
   ChevronRight,
   CircleAlert,
-  Clock3,
   Dumbbell,
   Filter,
   Flame,
-  MessageSquare,
-  MoreHorizontal,
   MoveRight,
   Play,
   Plus,
   Search,
-  SlidersHorizontal,
+  Trash2,
   Upload,
-  UsersRound,
   Video,
   X,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -48,25 +45,37 @@ import runner from "@/assets/workout-runner.jpg";
 import { AppShell } from "./app-shell";
 import {
   ChangePasswordCard,
+  EmptyState,
   Metric,
   PageHead,
   ProgressBar,
   ProgressRing,
   SectionTitle,
-  TaskRow,
 } from "./primitives";
-import { useAuth } from "@/lib/auth";
-import { useCoachRoster, useCreateAthlete } from "@/hooks/use-clients";
-import { useClientDetail } from "@/hooks/use-client-detail";
-import { useCoachDashboard } from "@/hooks/use-dashboard";
 import {
-  useConversations,
-  useEnsureConversation,
-  useMessages,
-  useSendMessage,
-} from "@/hooks/use-messages";
-import { useMeetings, useScheduleMeeting } from "@/hooks/use-meetings";
-import { useCoachCheckIns, useReviewCheckIn } from "@/hooks/use-check-ins";
+  ConfirmDialog,
+  Field,
+  FieldSelect,
+  MeetingDetailsDialog,
+  VideoPlayerDialog,
+  type PlayableVideo,
+} from "./shared";
+import {
+  AssignWorkoutDialog,
+  CheckInCard,
+  ScheduleMeetingDialog,
+  useDisplayName,
+} from "./coach-shared";
+import { ClientProfile } from "./coach-client-profile";
+import { Schedule } from "./coach-schedule";
+import { Nutrition } from "./coach-nutrition";
+import { useAuth } from "@/lib/auth";
+import { DEFAULT_ATHLETE_PASSWORD } from "@/lib/account";
+import { useCoachRoster, useCreateAthlete, type ClientStatus } from "@/hooks/use-clients";
+import { useCoachDashboard } from "@/hooks/use-dashboard";
+import { useConversations, useMessages, useSendMessage } from "@/hooks/use-messages";
+import { useMeetings, type MeetingWithOther } from "@/hooks/use-meetings";
+import { useCoachCheckIns } from "@/hooks/use-check-ins";
 import {
   useUpdateDailyReportSettings,
   useUpdateNotificationPrefs,
@@ -74,30 +83,20 @@ import {
 } from "@/hooks/use-settings";
 import {
   useAddExerciseToWorkout,
-  useAssignWorkout,
   useCoachWorkouts,
   useCreateExercise,
   useCreateWorkout,
+  useDeleteWorkout,
   useExerciseLibrary,
   useRemoveWorkoutExercise,
   useUpdateWorkout,
   useUploadExerciseVideo,
   useVideoLibrary,
 } from "@/hooks/use-workouts";
-import { useAddMeal, useCreateNutritionPlan, useNutritionPlan } from "@/hooks/use-nutrition";
-import type { MealRow } from "@/lib/database.types";
-import { useCoachWeekSchedule } from "@/hooks/use-schedule";
-import {
-  formatClock,
-  formatDay,
-  initialsFromName,
-  isoDate,
-  timeAgo,
-  weekDates,
-} from "@/lib/format";
-import { toast } from "sonner";
+import { initialsFromName, isHttpUrl, isoDate, parseIsoDate } from "@/lib/format";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
+import { errorText } from "@/lib/i18n/errors";
 
-const statusText = { "on-track": "On track", attention: "Needs attention", new: "New client" };
 export function CoachPage({ page, clientId }: { page: string; clientId?: string }) {
   return (
     <AppShell role="coach">
@@ -133,32 +132,38 @@ function CoachContent({ page, clientId }: { page: string; clientId?: string }) {
       return null;
   }
 }
+
+const chartTooltipStyle = {
+  background: "var(--popover)",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+};
+
 function CoachDashboard() {
+  const { t, tp, fmt } = useI18n();
   const { profile } = useAuth();
+  const displayName = useDisplayName();
   const d = useCoachDashboard();
-  const firstName = profile?.full_name?.split(" ")[0] || "Coach";
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  const firstName = profile?.full_name?.split(" ")[0] || t("coach.dashboard.fallbackName");
+  const today = fmt.date(new Date(), { weekday: "long", month: "short", day: "numeric" });
   const liveNow = d.activeClients > 0 ? Math.round((d.avgCompletion / 100) * d.activeClients) : 0;
+  const trend = d.trend.map((p) => ({ ...p, day: fmt.weekday(parseIsoDate(p.date)) }));
 
   return (
     <>
       <PageHead
         eyebrow={today}
-        title={`Good to see you, ${firstName}.`}
+        title={t("coach.dashboard.greeting", { name: firstName })}
         subtitle={
           d.attentionQueue.length > 0
-            ? `Your athletes are moving. ${d.attentionQueue.length} moment${d.attentionQueue.length === 1 ? "" : "s"} need your attention today.`
-            : "Your athletes are moving. Everything is on track today."
+            ? tp("coach.dashboard.subtitleAttention", d.attentionQueue.length)
+            : t("coach.dashboard.subtitleClear")
         }
         action={
           <Link to="/coach/clients">
             <Button>
               <Plus />
-              Add client
+              {t("coach.addClient")}
             </Button>
           </Link>
         }
@@ -167,57 +172,67 @@ function CoachDashboard() {
         <div className="lead-copy">
           <span className="live-chip">
             <span />
-            TODAY LIVE
+            {t("coach.dashboard.todayLive")}
           </span>
           <h2>
-            {d.activeClients} athlete{d.activeClients === 1 ? "" : "s"}
+            {tp("coach.dashboard.athletes", d.activeClients)}
             <br />
-            <em>in motion.</em>
+            <em>{t("coach.dashboard.inMotion")}</em>
           </h2>
-          <p>
-            {liveNow} of {d.activeClients} scheduled sessions are underway or complete this week.
-          </p>
+          <p>{t("coach.dashboard.sessionsUnderway", { done: liveNow, total: d.activeClients })}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/coach/clients">
               <Button size="lg">
-                Open live activity <MoveRight />
+                {t("coach.dashboard.openLive")} <MoveRight />
               </Button>
             </Link>
             <Link to="/coach/schedule">
               <Button variant="outline" size="lg">
-                View schedule
+                {t("coach.dashboard.viewSchedule")}
               </Button>
             </Link>
           </div>
         </div>
         <div className="lead-stats">
-          <ProgressRing value={d.avgCompletion} size={154} label="COMPLETION" />
+          <ProgressRing
+            value={d.avgCompletion}
+            size={154}
+            label={t("coach.dashboard.completionRing")}
+          />
           <div>
-            <p className="eyebrow">Team pulse</p>
+            <p className="eyebrow">{t("coach.dashboard.teamPulse")}</p>
             <strong className="font-display text-5xl">{d.activeClients}</strong>
-            <span className="ml-2 text-sm text-muted-foreground">athletes</span>
+            <span className="ms-2 text-sm text-muted-foreground">
+              {t("coach.dashboard.athletesLabel")}
+            </span>
           </div>
         </div>
       </section>
       <div className="metric-grid mt-4">
-        <Metric label="Active clients" value={String(d.activeClients).padStart(2, "0")} />
-        <Metric label="Weekly completion" value={`${d.avgCompletion}%`} />
         <Metric
-          label="Check-ins due"
+          label={t("metric.activeClients")}
+          value={String(d.activeClients).padStart(2, "0")}
+        />
+        <Metric label={t("metric.weeklyCompletion")} value={`${d.avgCompletion}%`} />
+        <Metric
+          label={t("metric.checkInsDue")}
           value={String(d.checkInsDue).padStart(2, "0")}
           accent={d.checkInsDue > 0}
         />
-        <Metric label="Needs attention" value={String(d.attentionQueue.length).padStart(2, "0")} />
+        <Metric
+          label={t("metric.needsAttention")}
+          value={String(d.attentionQueue.length).padStart(2, "0")}
+        />
       </div>
       <div className="content-grid mt-8">
         <section>
           <SectionTitle
-            overline="Requires action"
-            title="Attention queue"
+            overline={t("coach.dashboard.requiresAction")}
+            title={t("coach.dashboard.attentionQueue")}
             action={
               <Link to="/coach/clients">
                 <Button variant="ghost" size="sm">
-                  View all <ChevronRight />
+                  {t("common.viewAll")} <ChevronRight />
                 </Button>
               </Link>
             }
@@ -225,7 +240,7 @@ function CoachDashboard() {
           <div className="panel divide-y divide-border">
             {d.attentionQueue.length === 0 && (
               <p className="p-6 text-sm text-muted-foreground">
-                No athletes need attention right now.
+                {t("coach.dashboard.noAttention")}
               </p>
             )}
             {d.attentionQueue.map((c) => (
@@ -237,41 +252,65 @@ function CoachDashboard() {
               >
                 <span className="avatar-md">{c.initials}</span>
                 <span className="min-w-0 flex-1">
-                  <b>{c.name}</b>
-                  <small>Check-in or workout overdue</small>
+                  <b>{displayName(c.name)}</b>
+                  <small>{t("coach.dashboard.overdue")}</small>
                 </span>
                 <span className="status attention">
-                  <CircleAlert size={13} /> Review
+                  <CircleAlert size={13} /> {t("coach.dashboard.review")}
                 </span>
               </Link>
             ))}
           </div>
         </section>
         <section>
-          <SectionTitle overline="Next up" title="Meetings" />
+          <SectionTitle
+            overline={t("coach.dashboard.nextUp")}
+            title={t("coach.dashboard.meetings")}
+          />
           <div className="panel p-2">
             {d.upcomingMeetings.length === 0 && (
-              <p className="p-6 text-sm text-muted-foreground">No meetings scheduled.</p>
+              <p className="p-6 text-sm text-muted-foreground">{t("coach.dashboard.noMeetings")}</p>
             )}
             {d.upcomingMeetings.map((m) => {
               const other = m.profiles as unknown as { full_name: string } | null;
+              const isToday = isoDate(new Date(m.scheduled_at)) === isoDate();
               return (
                 <div className="meeting-row" key={m.id}>
                   <div className="date-block">
-                    <b>{formatClock(m.scheduled_at)}</b>
-                    <small>TODAY</small>
+                    <b>{fmt.clock(m.scheduled_at)}</b>
+                    <small>
+                      {isToday
+                        ? t("common.today")
+                        : fmt.date(m.scheduled_at, { month: "short", day: "numeric" })}
+                    </small>
                   </div>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <b className="text-sm">
-                      {other?.full_name ?? "Client"} · {m.title}
+                      {displayName(other?.full_name)} · {m.title}
                     </b>
                     <p className="text-xs text-muted-foreground">
-                      Video call · {m.duration_minutes} min
+                      {t("coach.dashboard.videoCall", { minutes: m.duration_minutes })}
                     </p>
                   </div>
-                  <button className="icon-button">
-                    <Video size={16} />
-                  </button>
+                  {isHttpUrl(m.video_url) ? (
+                    <a
+                      href={m.video_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="icon-button"
+                      aria-label={t("coach.dashboard.joinMeeting")}
+                    >
+                      <Video size={16} />
+                    </a>
+                  ) : (
+                    <Link
+                      to="/coach/meetings"
+                      className="icon-button"
+                      aria-label={t("coach.dashboard.meetings")}
+                    >
+                      <Video size={16} />
+                    </Link>
+                  )}
                 </div>
               );
             })}
@@ -279,11 +318,14 @@ function CoachDashboard() {
         </section>
       </div>
       <section className="mt-8">
-        <SectionTitle overline="Last 7 days" title="Team performance" />
+        <SectionTitle
+          overline={t("coach.dashboard.last7")}
+          title={t("coach.dashboard.teamPerformance")}
+        />
         <div className="chart-panel">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={d.trend}>
+              <AreaChart data={trend}>
                 <defs>
                   <linearGradient id="redArea" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
@@ -297,16 +339,11 @@ function CoachDashboard() {
                   tickLine={false}
                   tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
                 />
-                <Tooltip
-                  contentStyle={{
-                    background: "var(--popover)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 4,
-                  }}
-                />
+                <Tooltip contentStyle={chartTooltipStyle} />
                 <Area
                   type="monotone"
                   dataKey="value"
+                  name={t("metric.weeklyCompletion")}
                   stroke="var(--primary)"
                   strokeWidth={3}
                   fill="url(#redArea)"
@@ -320,185 +357,271 @@ function CoachDashboard() {
     </>
   );
 }
+
+// ============================================================
+// Clients
+// ============================================================
+
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function AddClientDialog() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [age, setAge] = useState("");
   const [sex, setSex] = useState("");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
+  const [created, setCreated] = useState<{ email: string; temporaryPassword: string } | null>(null);
   const createAthlete = useCreateAthlete();
 
   const reset = () => {
     setFullName("");
     setEmail("");
-    setPassword("");
     setAge("");
     setSex("");
     setHeight("");
     setWeight("");
+    setCreated(null);
   };
 
   const onSubmit = async () => {
     if (!fullName.trim()) {
-      toast.error("Enter the athlete's full name.");
+      toast.error(t("validation.fullName"));
       return;
     }
     if (!emailPattern.test(email.trim())) {
-      toast.error("Enter a valid email address.");
+      toast.error(t("validation.email"));
       return;
     }
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    if (age && !(Number.isInteger(Number(age)) && Number(age) >= 1 && Number(age) <= 119)) {
+      toast.error(t("validation.age"));
       return;
     }
-    if (age && (Number(age) < 1 || Number(age) > 119)) {
-      toast.error("Enter a valid age.");
+    if (height && !(Number(height) > 0 && Number(height) <= 299)) {
+      toast.error(t("validation.height"));
       return;
     }
-    if (height && (Number(height) <= 0 || Number(height) > 299)) {
-      toast.error("Enter a valid height in cm.");
-      return;
-    }
-    if (weight && (Number(weight) <= 0 || Number(weight) > 500)) {
-      toast.error("Enter a valid weight in kg.");
+    if (weight && !(Number(weight) > 0 && Number(weight) <= 500)) {
+      toast.error(t("validation.weight"));
       return;
     }
 
     try {
-      await createAthlete.mutateAsync({
+      const result = await createAthlete.mutateAsync({
         fullName: fullName.trim(),
         email: email.trim(),
-        password,
         ...(age ? { age: Number(age) } : {}),
         ...(sex ? { sex: sex as "male" | "female" | "other" } : {}),
         ...(height ? { heightCm: Number(height) } : {}),
         ...(weight ? { weightKg: Number(weight) } : {}),
       });
-      toast.success(`${fullName.trim()} can now sign in with the credentials you set.`);
-      reset();
-      setOpen(false);
+      setCreated({ email: result.email, temporaryPassword: result.temporaryPassword });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't create that athlete's account.");
+      toast.error(errorText(err, i18n, "coach.addClient.failed"));
+    }
+  };
+
+  const copyCredentials = async () => {
+    if (!created) return;
+    try {
+      await navigator.clipboard.writeText(
+        t("coach.addClient.credentialsText", {
+          email: created.email,
+          password: created.temporaryPassword,
+        }),
+      );
+      toast.success(t("coach.addClient.copied"));
+    } catch {
+      toast.error(t("coach.addClient.copyFailed"));
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
       <DialogTrigger asChild>
         <Button>
           <Plus />
-          Add client
+          {t("coach.addClient")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add an athlete</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Athletes don't sign up themselves — create their account here and share the email and
-            password with them so they can sign in right away.
-          </p>
-          <div className="space-y-1.5">
-            <Label htmlFor="athlete-name">Full name</Label>
-            <Input
-              id="athlete-name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Maya Chen"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="athlete-email">Email</Label>
-            <Input
-              id="athlete-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="athlete@example.com"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="athlete-password">Password</Label>
-            <Input
-              id="athlete-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="athlete-age">Age</Label>
-              <Input
-                id="athlete-age"
-                type="number"
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                placeholder="28"
-              />
+        {created ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t("coach.addClient.createdTitle")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{t("coach.addClient.createdBody")}</p>
+              <Field label={t("coach.addClient.email")}>
+                <Input readOnly dir="ltr" value={created.email} />
+              </Field>
+              <Field label={t("coach.addClient.temporaryPassword")}>
+                <Input readOnly dir="ltr" value={created.temporaryPassword} />
+              </Field>
+              <Button type="button" variant="outline" className="w-full" onClick={copyCredentials}>
+                {t("coach.addClient.copy")}
+              </Button>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="athlete-sex">Sex</Label>
-              <select
-                id="athlete-sex"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                value={sex}
-                onChange={(e) => setSex(e.target.value)}
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  setOpen(false);
+                  reset();
+                }}
               >
-                <option value="">Prefer not to say</option>
-                <option value="female">Female</option>
-                <option value="male">Male</option>
-                <option value="other">Other</option>
-              </select>
+                {t("common.done")}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{t("coach.addClient.title")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {t("coach.addClient.intro", { password: DEFAULT_ATHLETE_PASSWORD })}
+              </p>
+              <Field label={t("coach.addClient.fullName")} htmlFor="athlete-name">
+                <Input
+                  id="athlete-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder={t("coach.addClient.namePlaceholder")}
+                />
+              </Field>
+              <Field label={t("coach.addClient.email")} htmlFor="athlete-email">
+                <Input
+                  id="athlete-email"
+                  type="email"
+                  dir="ltr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={t("coach.addClient.emailPlaceholder")}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={t("coach.addClient.age")} htmlFor="athlete-age">
+                  <Input
+                    id="athlete-age"
+                    type="number"
+                    min={1}
+                    max={119}
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    placeholder="28"
+                  />
+                </Field>
+                <Field label={t("coach.addClient.sex")} htmlFor="athlete-sex">
+                  <FieldSelect
+                    id="athlete-sex"
+                    value={sex}
+                    onChange={(e) => setSex(e.target.value)}
+                  >
+                    <option value="">{t("sex.unspecified")}</option>
+                    <option value="female">{t("sex.female")}</option>
+                    <option value="male">{t("sex.male")}</option>
+                    <option value="other">{t("sex.other")}</option>
+                  </FieldSelect>
+                </Field>
+                <Field label={t("coach.addClient.height")} htmlFor="athlete-height">
+                  <Input
+                    id="athlete-height"
+                    type="number"
+                    value={height}
+                    onChange={(e) => setHeight(e.target.value)}
+                    placeholder="170"
+                  />
+                </Field>
+                <Field label={t("coach.addClient.weight")} htmlFor="athlete-weight">
+                  <Input
+                    id="athlete-weight"
+                    type="number"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    placeholder="65"
+                  />
+                </Field>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="athlete-height">Height (cm)</Label>
-              <Input
-                id="athlete-height"
-                type="number"
-                value={height}
-                onChange={(e) => setHeight(e.target.value)}
-                placeholder="170"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="athlete-weight">Weight (kg)</Label>
-              <Input
-                id="athlete-weight"
-                type="number"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="65"
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={createAthlete.isPending}>
-            {createAthlete.isPending ? "Creating account..." : "Create athlete account"}
-          </Button>
-        </DialogFooter>
+            <DialogFooter>
+              <Button onClick={onSubmit} disabled={createAthlete.isPending}>
+                {createAthlete.isPending
+                  ? t("coach.addClient.submitting")
+                  : t("coach.addClient.submit")}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
+
+type StatusFilter = "all" | ClientStatus;
+type SortKey = "name" | "completion" | "streak" | "recent" | "newest";
+const STATUS_FILTERS: StatusFilter[] = ["all", "on-track", "attention", "new"];
+const SORT_KEYS: SortKey[] = ["name", "completion", "streak", "recent", "newest"];
+
 function Clients() {
+  const { t, fmt } = useI18n();
+  const displayName = useDisplayName();
   const [q, setQ] = useState("");
-  const { data, isLoading } = useCoachRoster();
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [sort, setSort] = useState<SortKey>("name");
+  const [showFilters, setShowFilters] = useState(false);
+  const { data, isLoading, isError } = useCoachRoster();
   const roster = data ?? [];
-  const shown = roster.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
+
+  const needle = q.trim().toLowerCase();
+  const matchesSearch = (c: (typeof roster)[number]) =>
+    !needle ||
+    [c.name, c.goal ?? "", c.programName ?? ""].some((v) => v.toLowerCase().includes(needle));
+  const counts = Object.fromEntries(
+    STATUS_FILTERS.map((s) => [
+      s,
+      roster.filter((c) => matchesSearch(c) && (s === "all" || c.status === s)).length,
+    ]),
+  ) as Record<StatusFilter, number>;
+
+  const shown = roster
+    .filter((c) => matchesSearch(c) && (status === "all" || c.status === status))
+    .sort((a, b) => {
+      switch (sort) {
+        case "completion":
+          return b.weeklyCompletion - a.weeklyCompletion;
+        case "streak":
+          return b.streakDays - a.streakDays;
+        case "recent":
+          return (b.lastActiveAt ?? "").localeCompare(a.lastActiveAt ?? "");
+        case "newest":
+          return (b.joinedAt ?? "").localeCompare(a.joinedAt ?? "");
+        default:
+          return displayName(a.name).localeCompare(displayName(b.name));
+      }
+    });
+  const activeFilters = (status !== "all" ? 1 : 0) + (sort !== "name" ? 1 : 0);
+  const filtering = needle !== "" || status !== "all";
+  const clearFilters = () => {
+    setQ("");
+    setStatus("all");
+    setSort("name");
+  };
+
   return (
     <>
       <PageHead
-        eyebrow="Roster"
-        title="Your athletes"
-        subtitle="Know who is thriving, who needs attention, and what comes next."
+        eyebrow={t("coach.clients.eyebrow")}
+        title={t("coach.clients.title")}
+        subtitle={t("coach.clients.subtitle")}
         action={<AddClientDialog />}
       />
       <div className="toolbar">
@@ -507,24 +630,83 @@ function Clients() {
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search athletes..."
+            placeholder={t("coach.clients.search")}
+            aria-label={t("coach.clients.search")}
           />
         </div>
-        <Button variant="outline">
+        <Button
+          variant={showFilters || activeFilters > 0 ? "default" : "outline"}
+          onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+        >
           <Filter />
-          Filters
+          {t("coach.clients.filters")}
+          {activeFilters > 0 && <span className="filter-count">{activeFilters}</span>}
         </Button>
-        <span className="ml-auto text-xs font-bold text-muted-foreground">
-          {shown.length} ACTIVE
+        <span className="ms-auto text-xs font-bold text-muted-foreground">
+          {filtering
+            ? t("coach.clients.countFiltered", { shown: shown.length, total: roster.length })
+            : t("coach.clients.countActive", { count: roster.length })}
         </span>
       </div>
-      {isLoading && <p className="p-6 text-sm text-muted-foreground">Loading roster...</p>}
-      {!isLoading && roster.length === 0 && (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No athletes yet. Add your first client to get started.
-          </p>
+      {showFilters && (
+        <div className="filter-bar animate-enter">
+          <div>
+            <p className="eyebrow mb-2">{t("coach.clients.filterStatus")}</p>
+            <div className="segmented scroll">
+              {STATUS_FILTERS.map((s) => (
+                <button
+                  key={s}
+                  className={status === s ? "selected" : ""}
+                  onClick={() => setStatus(s)}
+                  aria-pressed={status === s}
+                >
+                  {s === "all" ? t("common.all") : t(`status.${s}`)} · {counts[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="client-sort" className="eyebrow mb-2 block">
+              {t("coach.clients.sortBy")}
+            </Label>
+            <FieldSelect
+              id="client-sort"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+            >
+              {SORT_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {t(`coach.clients.sort.${key}`)}
+                </option>
+              ))}
+            </FieldSelect>
+          </div>
+          {(activeFilters > 0 || needle) && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              <X />
+              {t("common.clearFilters")}
+            </Button>
+          )}
         </div>
+      )}
+      {isLoading && (
+        <p className="p-6 text-sm text-muted-foreground">{t("coach.clients.loading")}</p>
+      )}
+      {isError && <EmptyState>{t("coach.clients.loadFailed")}</EmptyState>}
+      {!isLoading && !isError && roster.length === 0 && (
+        <EmptyState>{t("coach.clients.empty")}</EmptyState>
+      )}
+      {!isLoading && roster.length > 0 && shown.length === 0 && (
+        <EmptyState
+          action={
+            <Button variant="outline" onClick={clearFilters}>
+              {t("common.clearFilters")}
+            </Button>
+          }
+        >
+          {t("coach.clients.noMatches")}
+        </EmptyState>
       )}
       <div className="client-list">
         {shown.map((c, i) => (
@@ -532,22 +714,22 @@ function Clients() {
             to="/coach/clients/$id"
             params={{ id: c.id }}
             className="client-row animate-enter"
-            style={{ animationDelay: `${i * 60}ms` }}
+            style={{ animationDelay: `${Math.min(i, 12) * 60}ms` }}
             key={c.id}
           >
             <span className="avatar-lg">{c.initials}</span>
             <div className="client-main">
-              <div>
-                <h3>{c.name}</h3>
+              <div className="min-w-0">
+                <h3>{displayName(c.name)}</h3>
                 <p>
-                  {c.goal} · {c.programName}
+                  {c.goal || t("common.noGoalSet")} · {c.programName || t("common.noActiveProgram")}
                 </p>
               </div>
-              <span className={`status ${c.status}`}>{statusText[c.status]}</span>
+              <span className={`status ${c.status}`}>{t(`status.${c.status}`)}</span>
             </div>
             <div className="client-progress">
               <div className="flex justify-between text-xs">
-                <span>Weekly completion</span>
+                <span>{t("coach.clients.weeklyCompletion")}</span>
                 <b>{c.weeklyCompletion}%</b>
               </div>
               <ProgressBar value={c.weeklyCompletion} />
@@ -555,13 +737,13 @@ function Clients() {
             <div className="client-streak">
               <Flame size={17} />
               <b>{c.streakDays}</b>
-              <span>day streak</span>
+              <span>{t("coach.clients.dayStreak")}</span>
             </div>
-            <div className="text-right text-xs text-muted-foreground">
+            <div className="client-last-active text-end text-xs text-muted-foreground">
               <b className="block text-foreground">
-                {c.lastActiveAt ? timeAgo(c.lastActiveAt) : "—"}
+                {c.lastActiveAt ? fmt.timeAgo(c.lastActiveAt) : "—"}
               </b>
-              last active
+              {t("coach.clients.lastActive")}
             </div>
             <ChevronRight className="text-muted-foreground" />
           </Link>
@@ -570,311 +752,36 @@ function Clients() {
     </>
   );
 }
-function ClientProfile({ id }: { id: string }) {
-  const { data: roster, isLoading: rosterLoading } = useCoachRoster();
-  const { checkIn, week, trend, isLoading } = useClientDetail(id);
-  const c = roster?.find((x) => x.id === id);
-  const ensureConversation = useEnsureConversation();
-  const navigate = useNavigate();
 
-  if (rosterLoading) return <p className="p-6 text-sm text-muted-foreground">Loading athlete...</p>;
-  if (!c) return <Clients />;
+// ============================================================
+// Workouts
+// ============================================================
 
-  const openMessages = async () => {
-    await ensureConversation.mutateAsync(id);
-    navigate({ to: "/coach/messages" });
-  };
-
-  return (
-    <>
-      <div className="profile-head">
-        <div className="flex items-center gap-5">
-          <span className="avatar-xl">{c.initials}</span>
-          <div>
-            <p className="eyebrow">Athlete profile</p>
-            <h1 className="page-title">{c.name}</h1>
-            <p className="text-sm text-muted-foreground">
-              {c.goal} · Active since{" "}
-              {c.joinedAt
-                ? new Date(c.joinedAt).toLocaleDateString(undefined, {
-                    month: "short",
-                    year: "numeric",
-                  })
-                : "recently"}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={openMessages}>
-            <MessageSquare />
-            Message
-          </Button>
-          <Link to="/coach/workouts">
-            <Button>
-              <SlidersHorizontal />
-              Adjust plan
-            </Button>
-          </Link>
-        </div>
-      </div>
-      <div className="profile-kpis">
-        <div>
-          <p className="eyebrow">Current program</p>
-          <b>{c.programName}</b>
-        </div>
-        <div>
-          <p className="eyebrow">Consistency</p>
-          <b className="text-primary">{c.weeklyCompletion}%</b>
-        </div>
-        <div>
-          <p className="eyebrow">Current weight</p>
-          <b>{c.currentWeightKg ? `${c.currentWeightKg} kg` : "Not logged"}</b>
-        </div>
-        <div>
-          <p className="eyebrow">Streak</p>
-          <b>{c.streakDays} days</b>
-        </div>
-      </div>
-      <div className="content-grid mt-8">
-        <section>
-          <SectionTitle overline="Performance" title="Momentum" />
-          <div className="chart-panel">
-            <div className="h-64">
-              {trend.length < 2 ? (
-                <div className="grid h-full place-items-center text-sm text-muted-foreground">
-                  Not enough weigh-ins yet to chart a trend.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend}>
-                    <CartesianGrid vertical={false} stroke="var(--border)" />
-                    <XAxis dataKey="day" hide />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--primary)"
-                      fill="var(--primary-fade)"
-                      strokeWidth={3}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-        </section>
-        <section>
-          <SectionTitle overline="Latest" title="Check-in signal" />
-          <div className="panel p-6">
-            {!checkIn ? (
-              <p className="text-sm text-muted-foreground">No check-ins submitted yet.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  {[
-                    ["ENERGY", checkIn.energy != null ? String(checkIn.energy) : "—"],
-                    ["SLEEP", checkIn.sleep_hours != null ? `${checkIn.sleep_hours}h` : "—"],
-                    ["MOOD", checkIn.mood ?? "—"],
-                  ].map((x) => (
-                    <div key={x[0]}>
-                      <p className="eyebrow">{x[0]}</p>
-                      <b className="mt-2 block text-xl">{x[1]}</b>
-                    </div>
-                  ))}
-                </div>
-                {checkIn.training_feedback && (
-                  <blockquote>&ldquo;{checkIn.training_feedback}&rdquo;</blockquote>
-                )}
-                <Link to="/coach/check-ins">
-                  <Button variant="outline" className="mt-4 w-full">
-                    Review full check-in
-                  </Button>
-                </Link>
-              </>
-            )}
-          </div>
-        </section>
-      </div>
-      <section className="mt-8">
-        <SectionTitle overline="This week" title="Scheduled work" />
-        <div className="week-strip">
-          {isLoading && <p className="text-sm text-muted-foreground">Loading schedule...</p>}
-          {!isLoading &&
-            week.map((d, i) => (
-              <div className={`week-day ${d.score === 100 ? "complete" : ""}`} key={i}>
-                <small>{d.day}</small>
-                <b>{d.date}</b>
-                <span>{d.label}</span>
-                <ProgressBar value={d.score} thin />
-              </div>
-            ))}
-        </div>
-      </section>
-    </>
-  );
-}
-const CAL_START_HOUR = 7;
-const CAL_END_HOUR = 19;
-function Schedule() {
-  const [mode, setMode] = useState("Week");
-  const { data } = useCoachWeekSchedule();
-  const events = data ?? [];
-  const dates = weekDates();
-  const today = isoDate();
-  const monthLabel = new Date().toLocaleDateString(undefined, { month: "long", year: "numeric" });
-
-  return (
-    <>
-      <PageHead
-        eyebrow={monthLabel}
-        title="Schedule"
-        subtitle="Orchestrate every workout, check-in, reminder and call."
-        action={
-          <Link to="/coach/workouts">
-            <Button>
-              <Plus />
-              New event
-            </Button>
-          </Link>
-        }
-      />
-      <div className="toolbar">
-        <div className="segmented">
-          {["Day", "Week", "Month"].map((x) => (
-            <button onClick={() => setMode(x)} className={mode === x ? "selected" : ""} key={x}>
-              {x}
-            </button>
-          ))}
-        </div>
-        <Button variant="outline">
-          <CalendarDays />
-          Today
-        </Button>
-      </div>
-      <div className="calendar-grid">
-        <div className="calendar-times">
-          {["07:00", "09:00", "11:00", "13:00", "15:00", "17:00", "19:00"].map((t) => (
-            <span key={t}>{t}</span>
-          ))}
-        </div>
-        {dates.slice(0, 5).map((date) => {
-          const key = date.toISOString().slice(0, 10);
-          const dayEvents = events.filter((e) => e.date === key);
-          return (
-            <div className="calendar-day" key={key}>
-              <div className="calendar-head">
-                <small>{formatDay(date.toISOString())}</small>
-                <b className={key === today ? "today" : ""}>{date.getDate()}</b>
-              </div>
-              {dayEvents.map((e) => (
-                <Event key={e.id} time={e.time} title={e.title} type={e.type} />
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-function Event({ time, title, type }: { time: string; title: string; type: string }) {
-  const [h, m] = time.split(":").map(Number);
-  const minutesFromStart = ((h ?? CAL_START_HOUR) - CAL_START_HOUR) * 60 + (m ?? 0);
-  const totalMinutes = (CAL_END_HOUR - CAL_START_HOUR) * 60;
-  const top = Math.min(94, Math.max(0, (minutesFromStart / totalMinutes) * 100));
-  return (
-    <button className={`cal-event ${type.toLowerCase()}`} style={{ top: `${top}%`, height: "16%" }}>
-      <small>{type}</small>
-      <b>{title}</b>
-    </button>
-  );
-}
-function AssignWorkoutDialog({ workoutId }: { workoutId: string }) {
-  const [open, setOpen] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [date, setDate] = useState(isoDate());
-  const { data: roster } = useCoachRoster();
-  const assign = useAssignWorkout();
-
-  const onSubmit = async () => {
-    if (!clientId) return;
-    try {
-      await assign.mutateAsync({
-        workout_id: workoutId,
-        client_id: clientId,
-        scheduled_date: date,
-      });
-      toast.success("Workout assigned.");
-      setOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't assign that workout.");
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="mt-3 w-full">
-          <Check />
-          Save & assign
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Assign this workout</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Client</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">Select a client</option>
-              {(roster ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="assign-date">Date</Label>
-            <Input
-              id="assign-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={assign.isPending}>
-            {assign.isPending ? "Assigning..." : "Assign"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 function NewExerciseDialog({ onCreated }: { onCreated: (id: string) => void }) {
+  const i18n = useI18n();
+  const { t } = i18n;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
   const createExercise = useCreateExercise();
 
   const onSubmit = async () => {
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      toast.error(t("validation.exerciseNameRequired"));
+      return;
+    }
     try {
       const created = await createExercise.mutateAsync({
         name: name.trim(),
-        category: category || null,
+        category: category.trim() || null,
       });
-      toast.success("Exercise added to your library.");
+      toast.success(t("coach.workouts.exerciseAdded"));
       setOpen(false);
       setName("");
+      setCategory("");
       onCreated(created.id);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't create that exercise.");
+      toast.error(errorText(err, i18n, "coach.workouts.exerciseFailed"));
     }
   };
 
@@ -885,49 +792,155 @@ function NewExerciseDialog({ onCreated }: { onCreated: (id: string) => void }) {
           <span>
             <Plus size={16} />
           </span>
-          <b>New exercise</b>
+          <b>{t("coach.workouts.newExercise")}</b>
         </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New exercise</DialogTitle>
+          <DialogTitle>{t("coach.workouts.newExercise")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="ex-name">Name</Label>
+          <Field label={t("coach.workouts.exerciseName")} htmlFor="ex-name">
             <Input
               id="ex-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Back squat"
+              placeholder={t("coach.workouts.exerciseNamePlaceholder")}
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ex-category">Category</Label>
+          </Field>
+          <Field label={t("coach.workouts.category")} htmlFor="ex-category">
             <Input
               id="ex-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="Strength"
+              placeholder={t("coach.workouts.categoryPlaceholder")}
             />
-          </div>
+          </Field>
         </div>
         <DialogFooter>
           <Button onClick={onSubmit} disabled={createExercise.isPending}>
-            {createExercise.isPending ? "Adding..." : "Add to library"}
+            {createExercise.isPending
+              ? t("coach.workouts.adding")
+              : t("coach.workouts.addToLibrary")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+/** "New workout": the coach names the workout (and optionally sets its duration/description)
+ *  before it's created. */
+function NewWorkoutDialog({ onCreated }: { onCreated: (id: string) => void }) {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const createWorkout = useCreateWorkout();
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [duration, setDuration] = useState("");
+  const [description, setDescription] = useState("");
+
+  const reset = () => {
+    setTitle("");
+    setDuration("");
+    setDescription("");
+  };
+
+  const onSubmit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!title.trim()) {
+      toast.error(t("validation.workoutNameRequired"));
+      return;
+    }
+    if (duration && !(Number(duration) > 0 && Number(duration) <= 600)) {
+      toast.error(t("validation.number"));
+      return;
+    }
+    try {
+      const created = await createWorkout.mutateAsync({
+        title: title.trim(),
+        ...(duration ? { duration_minutes: Math.round(Number(duration)) } : {}),
+        ...(description.trim() ? { description: description.trim() } : {}),
+      });
+      toast.success(t("coach.workouts.created"));
+      onCreated(created.id);
+      setOpen(false);
+      reset();
+    } catch (err) {
+      toast.error(errorText(err, i18n, "coach.workouts.createFailed"));
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button>
+          <Plus />
+          {t("coach.workouts.newWorkout")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={onSubmit} className="grid gap-4" noValidate>
+          <DialogHeader>
+            <DialogTitle>{t("coach.workouts.newTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Field label={t("coach.workouts.name")} htmlFor="workout-name">
+              <Input
+                id="workout-name"
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={t("coach.workouts.namePlaceholder")}
+              />
+            </Field>
+            <Field label={t("coach.workouts.duration")} htmlFor="workout-duration">
+              <Input
+                id="workout-duration"
+                type="number"
+                min={1}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="45"
+              />
+            </Field>
+            <Field label={t("coach.workouts.description")} htmlFor="workout-description">
+              <Textarea
+                id="workout-description"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t("coach.workouts.descriptionPlaceholder")}
+              />
+            </Field>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={createWorkout.isPending}>
+              {createWorkout.isPending ? t("coach.workouts.creating") : t("coach.workouts.create")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Workouts() {
+  const i18n = useI18n();
+  const { t, tp } = i18n;
   const { data: workouts, isLoading } = useCoachWorkouts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const { data: library } = useExerciseLibrary(search);
-  const createWorkout = useCreateWorkout();
   const updateWorkout = useUpdateWorkout();
+  const deleteWorkout = useDeleteWorkout();
   const addExercise = useAddExerciseToWorkout();
   const removeExercise = useRemoveWorkoutExercise();
 
@@ -946,55 +959,71 @@ function Workouts() {
   const workoutExercises = [...(selected?.workout_exercises ?? [])].sort(
     (a, b) => a.order_index - b.order_index,
   );
-
-  const onNewWorkout = async () => {
-    const created = await createWorkout.mutateAsync({ title: "New workout" });
-    setSelectedId(created.id);
-  };
+  const assignmentCount =
+    (selected?.workout_assignments as unknown as { count: number }[] | undefined)?.[0]?.count ?? 0;
 
   const onAddExercise = async (exerciseId: string) => {
     if (!selected) {
-      toast.error("Create a workout first.");
+      toast.error(t("coach.workouts.createFirst"));
       return;
     }
-    await addExercise.mutateAsync({
-      workout_id: selected.id,
-      exercise_id: exerciseId,
-      order_index: workoutExercises.length,
-      sets: 3,
-      reps: "8-10",
-      rest_seconds: 60,
-    });
+    try {
+      await addExercise.mutateAsync({
+        workout_id: selected.id,
+        exercise_id: exerciseId,
+        order_index: workoutExercises.length,
+        sets: 3,
+        reps: "8-10",
+        rest_seconds: 60,
+      });
+    } catch (err) {
+      toast.error(errorText(err, i18n, "coach.workouts.addExerciseFailed"));
+    }
   };
 
   const onSaveSettings = async () => {
     if (!selected) return;
-    await updateWorkout.mutateAsync({
-      id: selected.id,
-      title,
-      duration_minutes: duration ? Number(duration) : undefined,
-      notes,
-    });
-    toast.success("Workout saved.");
+    if (!title.trim()) {
+      toast.error(t("validation.workoutNameRequired"));
+      return;
+    }
+    try {
+      await updateWorkout.mutateAsync({
+        id: selected.id,
+        title: title.trim(),
+        duration_minutes: duration ? Math.round(Number(duration)) : null,
+        notes,
+      });
+      toast.success(t("coach.workouts.saved"));
+    } catch (err) {
+      toast.error(errorText(err, i18n, "coach.workouts.saveFailed"));
+    }
+  };
+
+  const onDelete = async () => {
+    if (!selected) return;
+    try {
+      await deleteWorkout.mutateAsync(selected.id);
+      toast.success(t("coach.workouts.deleted"));
+      setConfirmDelete(false);
+      setSelectedId(null);
+    } catch (err) {
+      toast.error(errorText(err, i18n, "coach.workouts.deleteFailed"));
+    }
   };
 
   return (
     <>
       <PageHead
-        eyebrow="Programming"
-        title="Workout studio"
-        subtitle="Build precise sessions with the rhythm of a professional training floor."
-        action={
-          <Button onClick={onNewWorkout} disabled={createWorkout.isPending}>
-            <Plus />
-            New workout
-          </Button>
-        }
+        eyebrow={t("coach.workouts.eyebrow")}
+        title={t("coach.workouts.title")}
+        subtitle={t("coach.workouts.subtitle")}
+        action={<NewWorkoutDialog onCreated={setSelectedId} />}
       />
       {!isLoading && (workouts ?? []).length > 1 && (
         <div className="toolbar">
-          <div className="segmented">
-            {(workouts ?? []).slice(0, 6).map((w) => (
+          <div className="segmented scroll">
+            {(workouts ?? []).map((w) => (
               <button
                 key={w.id}
                 className={selected?.id === w.id ? "selected" : ""}
@@ -1011,12 +1040,12 @@ function Workouts() {
           <div className="search-wrap">
             <Search />
             <Input
-              placeholder="Search exercises"
+              placeholder={t("coach.workouts.searchExercises")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <p className="eyebrow mt-5">Exercise library</p>
+          <p className="eyebrow mt-5">{t("coach.workouts.exerciseLibrary")}</p>
           {(library ?? []).map((ex) => (
             <button onClick={() => onAddExercise(ex.id)} className="exercise-option" key={ex.id}>
               <span>
@@ -1031,7 +1060,7 @@ function Workouts() {
         <section className="builder-canvas">
           {!selected ? (
             <div className="grid h-full place-items-center p-10 text-center text-sm text-muted-foreground">
-              Create a workout to start building your training sequence.
+              {isLoading ? t("common.loading") : t("coach.workouts.emptyCanvas")}
             </div>
           ) : (
             <>
@@ -1041,30 +1070,32 @@ function Workouts() {
                   width={1600}
                   height={912}
                   loading="lazy"
-                  alt="Athlete training with battle ropes"
+                  alt={t("coach.workouts.coverAlt")}
                 />
                 <div>
                   <p className="eyebrow">
-                    {selected.duration_minutes ? `${selected.duration_minutes} min` : "Untimed"}
+                    {selected.duration_minutes
+                      ? tp("common.minutes", selected.duration_minutes)
+                      : t("coach.workouts.untimed")}
                   </p>
                   <h2>{selected.title}</h2>
                   {selected.description && <p>{selected.description}</p>}
                 </div>
-                <button className="play-button">
+                <span className="play-button" aria-hidden="true">
                   <Play fill="currentColor" />
-                </button>
+                </span>
               </div>
               <div className="p-4 md:p-6">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold">Training sequence</h3>
+                  <h3 className="text-lg font-bold">{t("coach.workouts.trainingSequence")}</h3>
                   <span className="text-xs font-bold text-muted-foreground">
-                    {workoutExercises.length} EXERCISE{workoutExercises.length === 1 ? "" : "S"}
+                    {tp("coach.workouts.exerciseCount", workoutExercises.length)}
                   </span>
                 </div>
                 <div className="mt-4 space-y-2">
                   {workoutExercises.length === 0 && (
                     <p className="text-sm text-muted-foreground">
-                      Add exercises from the library on the left.
+                      {t("coach.workouts.addFromLibrary")}
                     </p>
                   )}
                   {workoutExercises.map((e, i) => {
@@ -1073,17 +1104,26 @@ function Workouts() {
                       <div className="builder-row" key={e.id}>
                         <span className="drag-handle">⠿</span>
                         <b className="index">{String(i + 1).padStart(2, "0")}</b>
-                        <div className="flex-1">
-                          <b>{exercise?.name ?? "Exercise"}</b>
+                        <div className="min-w-0 flex-1">
+                          <b>{exercise?.name ?? t("common.exercise")}</b>
                           <small>
                             {e.sets} × {e.reps} {e.load ? `· ${e.load}` : ""}
                           </small>
                         </div>
                         <div>
-                          <small>REST</small>
+                          <small>{t("coach.workouts.rest")}</small>
                           <b>{e.rest_seconds ? `${e.rest_seconds}s` : "—"}</b>
                         </div>
-                        <button className="icon-button" onClick={() => removeExercise.mutate(e.id)}>
+                        <button
+                          className="icon-button"
+                          aria-label={t("coach.workouts.removeExercise")}
+                          onClick={() =>
+                            removeExercise.mutate(e.id, {
+                              onError: (err) =>
+                                toast.error(errorText(err, i18n, "coach.workouts.saveFailed")),
+                            })
+                          }
+                        >
                           <X size={16} />
                         </button>
                       </div>
@@ -1095,22 +1135,23 @@ function Workouts() {
           )}
         </section>
         <aside className="builder-settings">
-          <p className="eyebrow">Workout settings</p>
+          <p className="eyebrow">{t("coach.workouts.settings")}</p>
           <label>
-            <span>Workout title</span>
+            <span>{t("coach.workouts.workoutTitle")}</span>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!selected} />
           </label>
           <label>
-            <span>Duration (minutes)</span>
+            <span>{t("coach.workouts.duration")}</span>
             <Input
               type="number"
+              min={1}
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
               disabled={!selected}
             />
           </label>
           <label>
-            <span>Coach notes</span>
+            <span>{t("coach.workouts.coachNotes")}</span>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -1121,33 +1162,115 @@ function Workouts() {
             className="mt-3 w-full"
             variant="outline"
             onClick={onSaveSettings}
-            disabled={!selected}
+            disabled={!selected || updateWorkout.isPending}
           >
-            Save changes
+            {updateWorkout.isPending ? t("common.saving") : t("coach.workouts.saveChanges")}
           </Button>
           {selected && <AssignWorkoutDialog workoutId={selected.id} />}
+          {selected && (
+            <Button
+              className="mt-3 w-full text-destructive hover:text-destructive"
+              variant="outline"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 />
+              {t("coach.workouts.deleteWorkout")}
+            </Button>
+          )}
         </aside>
       </div>
+      {selected && (
+        <ConfirmDialog
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          title={t("coach.workouts.deleteConfirmTitle", { title: selected.title })}
+          description={
+            <>
+              <span className="block">{t("coach.workouts.deleteConfirmBody")}</span>
+              {assignmentCount > 0 && (
+                <span className="block">
+                  {tp("coach.workouts.deleteConfirmAssignments", assignmentCount)}
+                </span>
+              )}
+            </>
+          }
+          confirmLabel={t("coach.workouts.deleteWorkout")}
+          pending={deleteWorkout.isPending}
+          onConfirm={onDelete}
+        />
+      )}
     </>
   );
 }
+
+// ============================================================
+// Videos
+// ============================================================
+
+const VIDEO_CATEGORIES = ["Strength", "Mobility", "Conditioning"] as const;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
+function readVideoDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const done = (value: number | null) => {
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    video.onloadedmetadata = () =>
+      done(Number.isFinite(video.duration) ? Math.round(video.duration) : null);
+    video.onerror = () => done(null);
+    video.src = url;
+  });
+}
+
+function categoryLabel(t: (key: TranslationKey) => string, category: string | null) {
+  if (!category) return t("category.movement");
+  return (VIDEO_CATEGORIES as readonly string[]).includes(category)
+    ? t(`category.${category as (typeof VIDEO_CATEGORIES)[number]}`)
+    : category;
+}
+
 function UploadVideoDialog() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Strength");
+  const [category, setCategory] = useState<string>("Strength");
   const [file, setFile] = useState<File | null>(null);
   const upload = useUploadExerciseVideo();
 
   const onSubmit = async () => {
-    if (!file || !name.trim()) return;
+    if (!name.trim()) {
+      toast.error(t("validation.exerciseNameRequired"));
+      return;
+    }
+    if (!file) {
+      toast.error(t("validation.videoFile"));
+      return;
+    }
+    if (!file.type.startsWith("video/")) {
+      toast.error(t("validation.videoType"));
+      return;
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      toast.error(t("validation.videoSize"));
+      return;
+    }
     try {
-      await upload.mutateAsync({ file, newExercise: { name: name.trim(), category } });
-      toast.success("Video uploaded.");
+      const durationSeconds = await readVideoDuration(file);
+      await upload.mutateAsync({
+        file,
+        newExercise: { name: name.trim(), category, durationSeconds },
+      });
+      toast.success(t("coach.videos.uploaded"));
       setOpen(false);
       setName("");
       setFile(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't upload that video.");
+      toast.error(errorText(err, i18n, "coach.videos.uploadFailed"));
     }
   };
 
@@ -1156,38 +1279,36 @@ function UploadVideoDialog() {
       <DialogTrigger asChild>
         <Button>
           <Upload />
-          Upload video
+          {t("coach.videos.upload")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Upload a training video</DialogTitle>
+          <DialogTitle>{t("coach.videos.uploadTitle")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="video-name">Exercise name</Label>
+          <Field label={t("coach.videos.exerciseName")} htmlFor="video-name">
             <Input
               id="video-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Sprint mechanics"
+              placeholder={t("coach.videos.namePlaceholder")}
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="video-category">Category</Label>
-            <select
+          </Field>
+          <Field label={t("coach.videos.category")} htmlFor="video-category">
+            <FieldSelect
               id="video-category"
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
-              <option>Strength</option>
-              <option>Mobility</option>
-              <option>Conditioning</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="video-file">Video file</Label>
+              {VIDEO_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {t(`category.${c}`)}
+                </option>
+              ))}
+            </FieldSelect>
+          </Field>
+          <Field label={t("coach.videos.file")} htmlFor="video-file">
             <input
               id="video-file"
               type="file"
@@ -1195,59 +1316,72 @@ function UploadVideoDialog() {
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="text-sm"
             />
-          </div>
+          </Field>
         </div>
         <DialogFooter>
           <Button onClick={onSubmit} disabled={upload.isPending || !file}>
-            {upload.isPending ? "Uploading..." : "Upload"}
+            {upload.isPending ? t("coach.videos.uploading") : t("coach.videos.uploadSubmit")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+function formatDuration(seconds: number | null) {
+  if (!seconds) return null;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 function Videos() {
+  const { t, tp } = useI18n();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
-  const { data } = useVideoLibrary(search, category);
+  const [playing, setPlaying] = useState<PlayableVideo | null>(null);
+  const { data, isLoading } = useVideoLibrary(search.trim(), category);
   const videos = data ?? [];
   const [featured, ...rest] = videos;
+  const filtering = search.trim() !== "" || category !== "All";
+
+  const play = (ex: { name: string; video_url: string | null; category: string | null }) => {
+    if (!ex.video_url) return;
+    setPlaying({ title: ex.name, url: ex.video_url, subtitle: categoryLabel(t, ex.category) });
+  };
 
   return (
     <>
       <PageHead
-        eyebrow="Media"
-        title="Training library"
-        subtitle="Movement instruction built to be watched, understood, and performed."
+        eyebrow={t("coach.videos.eyebrow")}
+        title={t("coach.videos.title")}
+        subtitle={t("coach.videos.subtitle")}
         action={<UploadVideoDialog />}
       />
       <div className="toolbar">
         <div className="search-wrap">
           <Search />
           <Input
-            placeholder="Search movement library..."
+            placeholder={t("coach.videos.search")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="segmented">
-          {["All", "Strength", "Mobility", "Conditioning"].map((x) => (
+        <div className="segmented scroll">
+          {(["All", ...VIDEO_CATEGORIES] as const).map((x) => (
             <button
               key={x}
               className={category === x ? "selected" : ""}
               onClick={() => setCategory(x)}
             >
-              {x}
+              {t(`category.${x}`)}
             </button>
           ))}
         </div>
       </div>
-      {videos.length === 0 && (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No training videos yet. Upload your first demonstration video to build the library.
-          </p>
-        </div>
+      {isLoading && (
+        <p className="p-6 text-sm text-muted-foreground">{t("coach.videos.loading")}</p>
+      )}
+      {!isLoading && videos.length === 0 && (
+        <EmptyState>{filtering ? t("coach.videos.noMatches") : t("coach.videos.empty")}</EmptyState>
       )}
       {featured && (
         <div className="video-feature">
@@ -1259,18 +1393,20 @@ function Videos() {
             alt={featured.name}
           />
           <div className="video-overlay">
-            <span className="live-chip">FEATURED</span>
+            <span className="live-chip">{t("coach.videos.featured")}</span>
             <h2>{featured.name}</h2>
             <p>
-              {featured.category ?? "Movement"}
-              {featured.duration_seconds
-                ? ` · ${Math.floor(featured.duration_seconds / 60)}:${String(featured.duration_seconds % 60).padStart(2, "0")}`
-                : ""}
+              {categoryLabel(t, featured.category)}
+              {featured.duration_seconds ? ` · ${formatDuration(featured.duration_seconds)}` : ""}
             </p>
           </div>
-          <a href={featured.video_url!} target="_blank" rel="noreferrer" className="play-button">
+          <button
+            className="play-button"
+            onClick={() => play(featured)}
+            aria-label={t("coach.videos.play", { name: featured.name })}
+          >
             <Play fill="currentColor" />
-          </a>
+          </button>
         </div>
       )}
       <div className="video-grid">
@@ -1287,296 +1423,95 @@ function Videos() {
                   height={912}
                   alt={ex.name}
                 />
-                {ex.duration_seconds && (
-                  <span>
-                    {Math.floor(ex.duration_seconds / 60)}:
-                    {String(ex.duration_seconds % 60).padStart(2, "0")}
-                  </span>
-                )}
-                <a href={ex.video_url!} target="_blank" rel="noreferrer">
+                {ex.duration_seconds ? <span>{formatDuration(ex.duration_seconds)}</span> : null}
+                <button
+                  onClick={() => play(ex)}
+                  aria-label={t("coach.videos.play", { name: ex.name })}
+                >
                   <Play fill="currentColor" />
-                </a>
+                </button>
               </div>
-              <p className="eyebrow mt-4">{(ex.category ?? "movement").toUpperCase()}</p>
+              <p className="eyebrow mt-4">{categoryLabel(t, ex.category)}</p>
               <h3>{ex.name}</h3>
               <p className="text-xs text-muted-foreground">
                 {assignedCount === 0
-                  ? "Not yet assigned"
-                  : `Assigned to ${assignedCount} workout${assignedCount === 1 ? "" : "s"}`}
+                  ? t("coach.videos.notAssigned")
+                  : tp("coach.videos.assigned", assignedCount)}
               </p>
             </article>
           );
         })}
       </div>
+      <VideoPlayerDialog video={playing} onClose={() => setPlaying(null)} />
     </>
   );
 }
-function CreatePlanDialog({ clientId }: { clientId: string }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("Performance build");
-  const [calories, setCalories] = useState("2100");
-  const [protein, setProtein] = useState("160");
-  const [carbs, setCarbs] = useState("240");
-  const [fat, setFat] = useState("65");
-  const createPlan = useCreateNutritionPlan();
 
-  const onSubmit = async () => {
-    try {
-      await createPlan.mutateAsync({
-        client_id: clientId,
-        name,
-        target_calories: Number(calories),
-        target_protein_g: Number(protein),
-        target_carbs_g: Number(carbs),
-        target_fat_g: Number(fat),
-      });
-      toast.success("Nutrition plan created.");
-      setOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't create that plan.");
-    }
-  };
+// ============================================================
+// Messages
+// ============================================================
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          Create plan
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New nutrition plan</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="plan-name">Plan name</Label>
-            <Input id="plan-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="plan-cal">Calories</Label>
-              <Input
-                id="plan-cal"
-                type="number"
-                value={calories}
-                onChange={(e) => setCalories(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="plan-protein">Protein (g)</Label>
-              <Input
-                id="plan-protein"
-                type="number"
-                value={protein}
-                onChange={(e) => setProtein(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="plan-carbs">Carbs (g)</Label>
-              <Input
-                id="plan-carbs"
-                type="number"
-                value={carbs}
-                onChange={(e) => setCarbs(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="plan-fat">Fat (g)</Label>
-              <Input
-                id="plan-fat"
-                type="number"
-                value={fat}
-                onChange={(e) => setFat(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={createPlan.isPending}>
-            {createPlan.isPending ? "Creating..." : "Create plan"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-function Nutrition() {
-  const { data: roster } = useCoachRoster();
-  const [clientId, setClientId] = useState<string | null>(null);
-  const activeClientId = clientId ?? roster?.[0]?.id ?? null;
-  const { data: plan, isLoading } = useNutritionPlan(activeClientId ?? undefined);
-  const addMeal = useAddMeal();
-  const [mealName, setMealName] = useState("");
-  const [mealKcal, setMealKcal] = useState("");
-  const [addingMeal, setAddingMeal] = useState(false);
-
-  const onAddMeal = async () => {
-    if (!plan || !mealName.trim()) return;
-    await addMeal.mutateAsync({
-      nutrition_plan_id: plan.id,
-      name: mealName.trim(),
-      order_index: plan.meals?.length ?? 0,
-      calories: Number(mealKcal) || 0,
-      protein_g: 0,
-      carbs_g: 0,
-      fat_g: 0,
-    });
-    setMealName("");
-    setMealKcal("");
-    setAddingMeal(false);
-  };
-
-  return (
-    <>
-      <PageHead
-        eyebrow="Fuel strategy"
-        title="Nutrition plans"
-        subtitle="Design the fuel behind the performance."
-        action={activeClientId ? <CreatePlanDialog clientId={activeClientId} /> : undefined}
-      />
-      <div className="toolbar">
-        <select
-          className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 text-sm"
-          value={activeClientId ?? ""}
-          onChange={(e) => setClientId(e.target.value)}
-        >
-          {(roster ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {!activeClientId && (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            Add a client first to build their nutrition plan.
-          </p>
-        </div>
-      )}
-      {activeClientId && !isLoading && !plan && (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No active plan for this athlete yet. Create one to get started.
-          </p>
-        </div>
-      )}
-      {plan && (
-        <>
-          <div className="nutrition-head">
-            <div>
-              <p className="eyebrow">Selected plan</p>
-              <h2>{plan.name}</h2>
-              <p>
-                {plan.day_type} day · {plan.target_calories} kcal
-              </p>
-            </div>
-            <div className="macro-strip">
-              {[
-                ["P", `${plan.target_protein_g}g`, "Protein"],
-                ["C", `${plan.target_carbs_g}g`, "Carbs"],
-                ["F", `${plan.target_fat_g}g`, "Fat"],
-              ].map((x) => (
-                <div key={x[0]}>
-                  <span>{x[0]}</span>
-                  <b>{x[1]}</b>
-                  <small>{x[2]}</small>
-                </div>
-              ))}
-            </div>
-          </div>
-          <section className="mt-8">
-            <SectionTitle overline="Daily sequence" title="Meal structure" />
-            <div className="meal-list">
-              {(plan.meals ?? []).map((m: MealRow, i: number) => (
-                <article className="meal-row" key={m.id}>
-                  <time>{m.meal_time ?? "—"}</time>
-                  <span className="meal-number">0{i + 1}</span>
-                  <div className="flex-1">
-                    <h3>{m.name}</h3>
-                    <p>{m.foods_summary ?? "No foods listed yet"}</p>
-                  </div>
-                  <div className="meal-macros">
-                    <b>{m.calories}</b>
-                    <small>KCAL</small>
-                  </div>
-                </article>
-              ))}
-              {addingMeal ? (
-                <article className="meal-row">
-                  <span className="meal-number">+</span>
-                  <div className="flex flex-1 gap-2">
-                    <Input
-                      placeholder="Meal name"
-                      value={mealName}
-                      onChange={(e) => setMealName(e.target.value)}
-                    />
-                    <Input
-                      placeholder="Kcal"
-                      type="number"
-                      className="w-24"
-                      value={mealKcal}
-                      onChange={(e) => setMealKcal(e.target.value)}
-                    />
-                  </div>
-                  <Button size="sm" onClick={onAddMeal} disabled={addMeal.isPending}>
-                    Save
-                  </Button>
-                </article>
-              ) : (
-                <Button variant="outline" className="w-full" onClick={() => setAddingMeal(true)}>
-                  <Plus />
-                  Add meal
-                </Button>
-              )}
-            </div>
-          </section>
-        </>
-      )}
-    </>
-  );
-}
 function Messages() {
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
+  const displayName = useDisplayName();
+  const search = useSearch({ strict: false }) as { c?: string };
   const [text, setText] = useState("");
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(search.c ?? null);
   const { data: conversations, isLoading } = useConversations();
   const list = conversations ?? [];
+  const needle = filter.trim().toLowerCase();
+  const shownList = list.filter((c) => {
+    const person = c.other as unknown as { full_name: string } | null;
+    return !needle || (person?.full_name ?? "").toLowerCase().includes(needle);
+  });
   const active = list.find((c) => c.id === activeId) ?? list[0] ?? null;
   const { data: messages } = useMessages(active?.id);
   const sendMessage = useSendMessage();
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (search.c) setActiveId(search.c);
+  }, [search.c]);
 
   const other = active?.other as unknown as { full_name: string; id: string } | null;
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!text.trim() || !active) return;
-    sendMessage.mutate({ conversationId: active.id, body: text.trim() });
+    sendMessage.mutate(
+      { conversationId: active.id, body: text.trim() },
+      { onError: (err) => toast.error(errorText(err, i18n, "messages.sendFailed")) },
+    );
     setText("");
   };
 
   return (
     <>
       <PageHead
-        eyebrow="Communication"
-        title="Messages"
-        subtitle="Stay close to the work without breaking its focus."
+        eyebrow={t("coach.messages.eyebrow")}
+        title={t("coach.messages.title")}
+        subtitle={t("coach.messages.subtitle")}
       />
       <div className="messages-layout">
         <aside className="conversation-list">
           <div className="search-wrap">
             <Search />
-            <Input placeholder="Search conversations" />
+            <Input
+              placeholder={t("coach.messages.search")}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
           </div>
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">Loading...</p>}
+          {isLoading && <p className="p-4 text-sm text-muted-foreground">{t("common.loading")}</p>}
           {!isLoading && list.length === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">
-              No conversations yet. Message a client from their profile.
-            </p>
+            <p className="p-4 text-sm text-muted-foreground">{t("coach.messages.empty")}</p>
           )}
-          {list.map((c) => {
+          {!isLoading && list.length > 0 && shownList.length === 0 && (
+            <p className="p-4 text-sm text-muted-foreground">{t("coach.messages.noMatches")}</p>
+          )}
+          {shownList.map((c) => {
             const person = c.other as unknown as { full_name: string; id: string };
             return (
               <button
@@ -1586,9 +1521,9 @@ function Messages() {
               >
                 <span className="avatar-md">{initialsFromName(person?.full_name)}</span>
                 <span className="min-w-0 flex-1">
-                  <b>{person?.full_name ?? "Client"}</b>
+                  <b>{displayName(person?.full_name)}</b>
                 </span>
-                <time>{timeAgo(c.last_message_at)}</time>
+                <time>{fmt.timeAgo(c.last_message_at)}</time>
               </button>
             );
           })}
@@ -1596,29 +1531,34 @@ function Messages() {
         <section className="chat">
           {!active ? (
             <div className="grid h-full place-items-center text-sm text-muted-foreground">
-              Select a conversation to start messaging.
+              {t("coach.messages.select")}
             </div>
           ) : (
             <>
               <header>
                 <span className="avatar-md">{initialsFromName(other?.full_name)}</span>
                 <div>
-                  <b>{other?.full_name ?? "Client"}</b>
+                  <b>{displayName(other?.full_name)}</b>
                 </div>
-                <button className="icon-button ml-auto">
+                <Link
+                  to="/coach/meetings"
+                  className="icon-button ms-auto"
+                  aria-label={t("coach.messages.scheduleCall")}
+                  title={t("coach.messages.scheduleCall")}
+                >
                   <Video />
-                </button>
+                </Link>
               </header>
               <div className="chat-body">
                 {(messages ?? []).length === 0 && (
-                  <p className="day-label">Say hello to start the conversation.</p>
+                  <p className="day-label">{t("messages.sayHello")}</p>
                 )}
                 {(messages ?? []).map((m) => (
                   <div className={`bubble ${m.sender_id === user?.id ? "out" : "in"}`} key={m.id}>
                     {m.body}
                     <time>
-                      {formatClock(m.created_at)}
-                      {m.sender_id === user?.id && m.read_at ? " · Read" : ""}
+                      {fmt.clock(m.created_at)}
+                      {m.sender_id === user?.id && m.read_at ? ` · ${t("common.read")}` : ""}
                     </time>
                   </div>
                 ))}
@@ -1630,9 +1570,11 @@ function Messages() {
                 <Input
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder={`Message ${other?.full_name?.split(" ")[0] ?? ""}...`}
+                  placeholder={t("messages.placeholder", {
+                    name: other?.full_name?.split(" ")[0] ?? "",
+                  })}
                 />
-                <Button type="submit">Send</Button>
+                <Button type="submit">{t("common.send")}</Button>
               </form>
             </>
           )}
@@ -1641,173 +1583,147 @@ function Messages() {
     </>
   );
 }
-function ScheduleMeetingDialog() {
-  const [open, setOpen] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [title, setTitle] = useState("");
-  const [datetime, setDatetime] = useState("");
-  const { data: roster } = useCoachRoster();
-  const schedule = useScheduleMeeting();
 
-  const onSubmit = async () => {
-    if (!clientId || !title || !datetime) return;
-    try {
-      await schedule.mutateAsync({
-        client_id: clientId,
-        title,
-        scheduled_at: new Date(datetime).toISOString(),
-      });
-      toast.success("Meeting scheduled.");
-      setOpen(false);
-      setTitle("");
-      setDatetime("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't schedule that meeting.");
-    }
-  };
+// ============================================================
+// Meetings
+// ============================================================
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          Schedule meeting
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Schedule a meeting</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Client</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-            >
-              <option value="">Select a client</option>
-              {(roster ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="meeting-title">Title</Label>
-            <Input
-              id="meeting-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Progress review"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="meeting-time">Date & time</Label>
-            <Input
-              id="meeting-time"
-              type="datetime-local"
-              value={datetime}
-              onChange={(e) => setDatetime(e.target.value)}
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={schedule.isPending}>
-            {schedule.isPending ? "Scheduling..." : "Schedule"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 function Meetings() {
+  const { t, fmt } = useI18n();
+  const displayName = useDisplayName();
   const { data } = useMeetings();
-  const meetings = data ?? [];
+  const [openMeeting, setOpenMeeting] = useState<MeetingWithOther | null>(null);
+  const meetings = (data ?? []).filter((m) => m.status === "scheduled");
   const now = Date.now();
-  const next = meetings.find((m) => new Date(m.scheduled_at).getTime() >= now);
-  const upcoming = meetings.filter((m) => m.id !== next?.id).slice(0, 6);
-  const nextOther = next?.other as unknown as { full_name: string } | null;
+  // Still joinable until it ends.
+  const upcomingAll = meetings.filter(
+    (m) => new Date(m.scheduled_at).getTime() + m.duration_minutes * 60_000 >= now,
+  );
+  const next = upcomingAll[0];
+  const upcoming = upcomingAll.slice(1, 7);
   const minutesUntil = next ? Math.round((new Date(next.scheduled_at).getTime() - now) / 60000) : 0;
+  const nextLink = next && isHttpUrl(next.video_url) ? next.video_url : null;
+  // Keep the open dialog in sync with refetched data (e.g. after editing its link).
+  const liveOpenMeeting = openMeeting
+    ? ((data ?? []).find((m) => m.id === openMeeting.id) ?? openMeeting)
+    : null;
 
   return (
     <>
       <PageHead
-        eyebrow="1-to-1 coaching"
-        title="Meetings"
-        subtitle="Create space for the conversations that move performance forward."
+        eyebrow={t("coach.meetings.eyebrow")}
+        title={t("coach.meetings.title")}
+        subtitle={t("coach.meetings.subtitle")}
         action={<ScheduleMeetingDialog />}
       />
       {next ? (
         <div className="meeting-feature">
           <div className="date-big">
             <b>{new Date(next.scheduled_at).getDate()}</b>
-            <span>
-              {new Date(next.scheduled_at)
-                .toLocaleDateString(undefined, { month: "short" })
-                .toUpperCase()}
-            </span>
+            <span>{fmt.month(next.scheduled_at)}</span>
           </div>
           <div>
             <span className="live-chip">
               <span />
-              {minutesUntil <= 0 ? "IN PROGRESS" : `STARTS IN ${minutesUntil} MIN`}
+              {minutesUntil <= 0
+                ? t("meeting.inProgress")
+                : minutesUntil < 60
+                  ? t("meeting.startsIn", { count: minutesUntil })
+                  : t("meeting.onDate", {
+                      date: fmt.date(next.scheduled_at, {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                      }),
+                      time: fmt.clock(next.scheduled_at),
+                    })}
             </span>
             <h2>
-              {next.title} with {nextOther?.full_name ?? "your client"}
+              {t("coach.meetings.withClient", {
+                title: next.title,
+                name: next.other?.full_name || t("coach.meetings.yourClient"),
+              })}
             </h2>
             {next.notes && <p>{next.notes}</p>}
-            <div className="mt-5 flex gap-3">
-              <Button>
-                <Video />
-                Join room
+            <div className="mt-5 flex flex-wrap gap-3">
+              {nextLink ? (
+                <a href={nextLink} target="_blank" rel="noreferrer">
+                  <Button>
+                    <Video />
+                    {t("coach.meetings.joinRoom")}
+                  </Button>
+                </a>
+              ) : (
+                <Button disabled title={t("meeting.noZoomLink")}>
+                  <Video />
+                  {t("coach.meetings.joinRoom")}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setOpenMeeting(next)}>
+                {t("coach.meetings.viewNotes")}
               </Button>
-              <Button variant="outline">View notes</Button>
             </div>
           </div>
         </div>
       ) : (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">No meetings scheduled yet.</p>
-        </div>
+        <EmptyState>{t("coach.meetings.empty")}</EmptyState>
       )}
       <section className="mt-8">
-        <SectionTitle overline="Upcoming" title="Next conversations" />
+        <SectionTitle
+          overline={t("coach.meetings.upcoming")}
+          title={t("coach.meetings.nextConversations")}
+        />
         <div className="panel divide-y divide-border">
           {upcoming.length === 0 && (
-            <p className="p-6 text-sm text-muted-foreground">Nothing else on the calendar.</p>
+            <p className="p-6 text-sm text-muted-foreground">{t("coach.meetings.nothingElse")}</p>
           )}
           {upcoming.map((m) => {
-            const person = m.other as unknown as { full_name: string; id: string };
             const d = new Date(m.scheduled_at);
             return (
-              <div className="appointment" key={m.id}>
+              <button
+                className="appointment w-full text-start"
+                key={m.id}
+                onClick={() => setOpenMeeting(m)}
+              >
                 <time>
                   <b>{d.getDate()}</b>
-                  <span>{d.toLocaleDateString(undefined, { month: "short" }).toUpperCase()}</span>
+                  <span>{fmt.month(d)}</span>
                 </time>
-                <span className="avatar-md">{initialsFromName(person?.full_name)}</span>
-                <div className="flex-1">
+                <span className="avatar-md">{initialsFromName(m.other?.full_name)}</span>
+                <div className="min-w-0 flex-1">
                   <b>
-                    {m.title} · {person?.full_name ?? "Client"}
+                    {m.title} · {displayName(m.other?.full_name)}
                   </b>
                   <p>
-                    {formatClock(m.scheduled_at)} · Video call · {m.duration_minutes} min
+                    {t("coach.meetings.videoCallLine", {
+                      time: fmt.clock(m.scheduled_at),
+                      minutes: m.duration_minutes,
+                    })}
                   </p>
                 </div>
-                <Button variant="ghost" size="icon">
-                  <ChevronRight />
-                </Button>
-              </div>
+                <ChevronRight className="text-muted-foreground" />
+              </button>
             );
           })}
         </div>
       </section>
+      <MeetingDetailsDialog
+        meeting={liveOpenMeeting}
+        otherName={displayName(liveOpenMeeting?.other?.full_name)}
+        canEdit
+        onClose={() => setOpenMeeting(null)}
+      />
     </>
   );
 }
+
+// ============================================================
+// Progress
+// ============================================================
+
 function Progress() {
+  const { t, fmt } = useI18n();
+  const displayName = useDisplayName();
   const { data: roster } = useCoachRoster();
   const d = useCoachDashboard();
   const clients = roster ?? [];
@@ -1818,30 +1734,43 @@ function Progress() {
   const leaderboard = [...clients]
     .sort((a, b) => b.weeklyCompletion - a.weeklyCompletion)
     .slice(0, 5);
+  const trend = d.trend.map((p) => ({ ...p, day: fmt.weekday(parseIsoDate(p.date)) }));
 
   return (
     <>
       <PageHead
-        eyebrow="Analytics"
-        title="Performance intelligence"
-        subtitle="Patterns across your roster, translated into coaching action."
+        eyebrow={t("coach.progress.eyebrow")}
+        title={t("coach.progress.title")}
+        subtitle={t("coach.progress.subtitle")}
       />
       <div className="metric-grid">
-        <Metric label="Avg completion" value={`${d.avgCompletion}%`} />
-        <Metric label="Active clients" value={String(clients.length).padStart(2, "0")} />
-        <Metric label="Avg streak" value={`${avgStreak}d`} />
-        <Metric label="At risk" value={String(atRisk).padStart(2, "0")} accent={atRisk > 0} />
+        <Metric label={t("metric.avgCompletion")} value={`${d.avgCompletion}%`} />
+        <Metric label={t("metric.activeClients")} value={String(clients.length).padStart(2, "0")} />
+        <Metric
+          label={t("metric.avgStreak")}
+          value={t("coach.progress.streakValue", { count: avgStreak })}
+        />
+        <Metric
+          label={t("metric.atRisk")}
+          value={String(atRisk).padStart(2, "0")}
+          accent={atRisk > 0}
+        />
       </div>
       <div className="content-grid mt-8">
         <div className="chart-panel">
-          <SectionTitle overline="Completion" title="Weekly output" />
+          <SectionTitle
+            overline={t("coach.progress.completion")}
+            title={t("coach.progress.weeklyOutput")}
+          />
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={d.trend}>
+              <BarChart data={trend}>
                 <CartesianGrid vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: "var(--accent)" }} />
                 <Bar
                   dataKey="value"
+                  name={t("metric.weeklyCompletion")}
                   fill="var(--primary)"
                   radius={[2, 2, 0, 0]}
                   animationDuration={900}
@@ -1851,135 +1780,99 @@ function Progress() {
           </div>
         </div>
         <div className="panel p-6">
-          <SectionTitle overline="Leaderboard" title="Momentum" />
+          <SectionTitle
+            overline={t("coach.progress.leaderboard")}
+            title={t("coach.progress.momentum")}
+          />
           {leaderboard.length === 0 && (
-            <p className="text-sm text-muted-foreground">No athlete activity yet.</p>
+            <p className="text-sm text-muted-foreground">{t("coach.progress.noActivity")}</p>
           )}
           {leaderboard.map((c, i) => (
-            <div className="rank-row" key={c.id}>
+            <Link to="/coach/clients/$id" params={{ id: c.id }} className="rank-row" key={c.id}>
               <b className="rank">0{i + 1}</b>
               <span className="avatar-sm">{c.initials}</span>
-              <div className="flex-1">
-                <b>{c.name}</b>
+              <div className="min-w-0 flex-1">
+                <b>{displayName(c.name)}</b>
                 <ProgressBar value={c.weeklyCompletion} thin />
               </div>
               <strong>{c.weeklyCompletion}%</strong>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
     </>
   );
 }
-function CheckIns() {
-  const { data } = useCoachCheckIns();
-  const reviewCheckIn = useReviewCheckIn();
-  const [feedback, setFeedback] = useState<Record<string, string>>({});
-  const checkIns = data ?? [];
 
-  const submitFeedback = async (id: string) => {
-    try {
-      await reviewCheckIn.mutateAsync({ id, feedback: feedback[id] ?? "" });
-      toast.success("Feedback sent.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save feedback.");
-    }
-  };
+// ============================================================
+// Check-ins
+// ============================================================
+
+function CheckIns() {
+  const { t } = useI18n();
+  const displayName = useDisplayName();
+  const { data, isLoading } = useCoachCheckIns();
+  const checkIns = data ?? [];
 
   return (
     <>
       <PageHead
-        eyebrow="Athlete signals"
-        title="Check-ins"
-        subtitle="Read the human data behind every training week."
+        eyebrow={t("coach.checkins.eyebrow")}
+        title={t("coach.checkins.title")}
+        subtitle={t("coach.checkins.subtitle")}
       />
-      {checkIns.length === 0 && (
-        <div className="panel p-10 text-center">
-          <p className="text-sm text-muted-foreground">No check-ins submitted yet.</p>
-        </div>
-      )}
+      {isLoading && <p className="p-6 text-sm text-muted-foreground">{t("common.loading")}</p>}
+      {!isLoading && checkIns.length === 0 && <EmptyState>{t("coach.checkins.empty")}</EmptyState>}
       <div className="checkin-grid">
         {checkIns.map((c) => {
-          const person = c.profiles as unknown as { full_name: string; id: string };
+          const person = c.profiles as unknown as { full_name: string; id: string } | null;
           return (
-            <article className="checkin-card" key={c.id}>
-              <header>
-                <span className="avatar-md">{initialsFromName(person?.full_name)}</span>
-                <div>
-                  <b>{person?.full_name ?? "Client"}</b>
-                  <p>{timeAgo(c.submitted_at)}</p>
-                </div>
-                <span className={c.status === "pending" ? "status attention" : "status on-track"}>
-                  {c.status === "pending" ? "Review" : "Reviewed"}
-                </span>
-              </header>
-              <div className="signal-grid">
-                <div>
-                  <small>ENERGY</small>
-                  <b>{c.energy ?? "—"}</b>
-                </div>
-                <div>
-                  <small>SLEEP</small>
-                  <b>{c.sleep_hours != null ? `${c.sleep_hours}h` : "—"}</b>
-                </div>
-                <div>
-                  <small>MOOD</small>
-                  <b>{c.mood ?? "—"}</b>
-                </div>
-              </div>
-              {c.training_feedback && (
-                <p className="checkin-note">&ldquo;{c.training_feedback}&rdquo;</p>
-              )}
-              {c.status === "pending" ? (
-                <div className="mt-2 space-y-2">
-                  <Input
-                    placeholder="Write feedback..."
-                    value={feedback[c.id] ?? ""}
-                    onChange={(e) => setFeedback((f) => ({ ...f, [c.id]: e.target.value }))}
-                  />
-                  <Button variant="outline" className="w-full" onClick={() => submitFeedback(c.id)}>
-                    Send feedback & mark reviewed
-                  </Button>
-                </div>
-              ) : (
-                c.coach_feedback && (
-                  <p className="text-sm text-muted-foreground">Your reply: {c.coach_feedback}</p>
-                )
-              )}
-            </article>
+            <CheckInCard key={c.id} checkIn={c} athleteName={displayName(person?.full_name)} />
           );
         })}
       </div>
     </>
   );
 }
-const coachSettingsTabs = ["Profile", "Notifications", "Daily reports"] as const;
+
+// ============================================================
+// Settings
+// ============================================================
+
+const coachSettingsTabs = [
+  ["profile", "settings.tab.profile"],
+  ["notifications", "settings.tab.notifications"],
+  ["reports", "settings.tab.dailyReports"],
+] as const;
 function Settings() {
-  const [tab, setTab] = useState<(typeof coachSettingsTabs)[number]>("Profile");
+  const { t } = useI18n();
+  const [tab, setTab] = useState<(typeof coachSettingsTabs)[number][0]>("profile");
   return (
     <>
       <PageHead
-        eyebrow="Workspace"
-        title="Settings"
-        subtitle="Control how iCoach fits your coaching rhythm."
+        eyebrow={t("settings.eyebrowCoach")}
+        title={t("settings.title")}
+        subtitle={t("settings.subtitleCoach")}
       />
       <div className="settings-layout">
         <nav>
-          {coachSettingsTabs.map((x) => (
-            <button className={tab === x ? "active" : ""} key={x} onClick={() => setTab(x)}>
-              {x}
+          {coachSettingsTabs.map(([key, labelKey]) => (
+            <button className={tab === key ? "active" : ""} key={key} onClick={() => setTab(key)}>
+              {t(labelKey)}
               <ChevronRight />
             </button>
           ))}
         </nav>
-        {tab === "Profile" && <ProfileSettingsPanel />}
-        {tab === "Notifications" && <NotificationSettingsPanel />}
-        {tab === "Daily reports" && <DailyReportsPanel />}
+        {tab === "profile" && <ProfileSettingsPanel />}
+        {tab === "notifications" && <NotificationSettingsPanel />}
+        {tab === "reports" && <DailyReportsPanel />}
       </div>
     </>
   );
 }
 function ProfileSettingsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { profile } = useAuth();
   const updateProfile = useUpdateProfile();
   const [fullName, setFullName] = useState(profile?.full_name ?? "");
@@ -1987,25 +1880,27 @@ function ProfileSettingsPanel() {
   const [bio, setBio] = useState(profile?.bio ?? "");
 
   const save = async () => {
+    if (!fullName.trim()) {
+      toast.error(t("validation.yourName"));
+      return;
+    }
     try {
-      await updateProfile.mutateAsync({ full_name: fullName, phone, bio });
-      toast.success("Profile updated.");
+      await updateProfile.mutateAsync({ full_name: fullName.trim(), phone, bio });
+      toast.success(t("settings.profileUpdated"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save your profile.");
+      toast.error(errorText(err, i18n, "settings.profileFailed"));
     }
   };
 
   return (
     <div className="space-y-6">
       <section className="settings-panel">
-        <p className="eyebrow">Your details</p>
-        <h2>Coach profile</h2>
-        <p className="text-sm text-muted-foreground">
-          This is how your name and bio appear to your athletes.
-        </p>
+        <p className="eyebrow">{t("settings.yourDetails")}</p>
+        <h2>{t("settings.coachProfile")}</h2>
+        <p className="text-sm text-muted-foreground">{t("settings.coachProfileBody")}</p>
         <div className="setting-row">
           <div className="w-full">
-            <b>Full name</b>
+            <b>{t("settings.fullName")}</b>
             <Input
               className="mt-2"
               value={fullName}
@@ -2015,13 +1910,18 @@ function ProfileSettingsPanel() {
         </div>
         <div className="setting-row">
           <div className="w-full">
-            <b>Phone</b>
-            <Input className="mt-2" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <b>{t("settings.phone")}</b>
+            <Input
+              className="mt-2"
+              dir="ltr"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
         </div>
         <div className="setting-row">
           <div className="w-full">
-            <b>Bio</b>
+            <b>{t("settings.bio")}</b>
             <textarea
               className="mt-2 w-full rounded-md border border-input bg-transparent p-3 text-sm"
               rows={3}
@@ -2031,7 +1931,7 @@ function ProfileSettingsPanel() {
           </div>
         </div>
         <Button className="mt-6" onClick={save} disabled={updateProfile.isPending}>
-          {updateProfile.isPending ? "Saving..." : "Save profile"}
+          {updateProfile.isPending ? t("common.saving") : t("settings.saveProfile")}
         </Button>
       </section>
       <ChangePasswordCard />
@@ -2039,28 +1939,33 @@ function ProfileSettingsPanel() {
   );
 }
 function NotificationSettingsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { profile } = useAuth();
   const updatePrefs = useUpdateNotificationPrefs();
   const prefs = profile?.notification_prefs ?? {};
-  const rows: [string, string, string][] = [
-    ["newMessage", "New messages", "Alert me when a client sends a message"],
-    ["checkIn", "Check-in submitted", "Alert me when a client submits a check-in"],
-    ["workoutCompleted", "Workout completed", "Alert me when a client finishes a session"],
-    ["meetingReminder", "Meeting reminders", "Remind me before scheduled meetings"],
-  ];
+  const rows = [
+    ["newMessage", "notifPref.newMessage", "notifPref.newMessageDesc"],
+    ["checkIn", "notifPref.checkIn", "notifPref.checkInDesc"],
+    ["workoutCompleted", "notifPref.workoutCompleted", "notifPref.workoutCompletedDesc"],
+    ["meetingReminder", "notifPref.meetingReminder", "notifPref.meetingReminderDesc"],
+  ] as const;
   const toggle = (key: string, value: boolean) => {
-    updatePrefs.mutate({ ...prefs, [key]: value });
+    updatePrefs.mutate(
+      { ...prefs, [key]: value },
+      { onError: (err) => toast.error(errorText(err, i18n, "settings.prefsUpdateFailed")) },
+    );
   };
   return (
     <section className="settings-panel">
-      <p className="eyebrow">Stay informed</p>
-      <h2>Notifications</h2>
-      <p className="text-sm text-muted-foreground">Choose what iCoach should notify you about.</p>
-      {rows.map(([key, label, desc]) => (
+      <p className="eyebrow">{t("settings.stayInformed")}</p>
+      <h2>{t("settings.notificationsTitle")}</h2>
+      <p className="text-sm text-muted-foreground">{t("settings.notificationsCoachBody")}</p>
+      {rows.map(([key, labelKey, descKey]) => (
         <div className="setting-row" key={key}>
           <div>
-            <b>{label}</b>
-            <p>{desc}</p>
+            <b>{t(labelKey)}</b>
+            <p>{t(descKey)}</p>
           </div>
           <Switch checked={prefs[key] ?? true} onCheckedChange={(v) => toggle(key, v)} />
         </div>
@@ -2069,6 +1974,8 @@ function NotificationSettingsPanel() {
   );
 }
 function DailyReportsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { profile } = useAuth();
   const updateSettings = useUpdateDailyReportSettings();
   const settings = profile?.daily_report_settings ?? {};
@@ -2079,32 +1986,39 @@ function DailyReportsPanel() {
   const save = async () => {
     try {
       await updateSettings.mutateAsync({ enabled, time, push });
-      toast.success("Report preferences saved.");
+      toast.success(t("settings.prefsSaved"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't save preferences.");
+      toast.error(errorText(err, i18n, "settings.prefsFailed"));
     }
   };
 
+  const includes = [
+    "report.completedTasks",
+    "report.missedTasks",
+    "report.workoutCompletion",
+    "report.nutritionCompletion",
+    "report.completionPct",
+    "report.checkInStatus",
+  ] as const;
+
   return (
     <section className="settings-panel">
-      <p className="eyebrow">Automation setup</p>
-      <h2>Daily client reports</h2>
-      <p className="text-sm text-muted-foreground">
-        Choose when and how your athlete summaries appear.
-      </p>
+      <p className="eyebrow">{t("settings.automation")}</p>
+      <h2>{t("settings.dailyReports")}</h2>
+      <p className="text-sm text-muted-foreground">{t("settings.dailyReportsBody")}</p>
       <div className="setting-row">
         <div>
-          <b>Enable daily reports</b>
-          <p>Prepare one consolidated report for your active clients.</p>
+          <b>{t("settings.enableReports")}</b>
+          <p>{t("settings.enableReportsDesc")}</p>
         </div>
         <Switch checked={enabled} onCheckedChange={setEnabled} />
       </div>
       <div className="setting-row">
         <div>
-          <b>Report time</b>
-          <p>Your preferred daily review window.</p>
+          <b>{t("settings.reportTime")}</b>
+          <p>{t("settings.reportTimeDesc")}</p>
         </div>
-        <select value={time} onChange={(e) => setTime(e.target.value)}>
+        <select value={time} onChange={(e) => setTime(e.target.value)} dir="ltr">
           <option>18:00</option>
           <option>20:00</option>
           <option>21:00</option>
@@ -2112,30 +2026,23 @@ function DailyReportsPanel() {
       </div>
       <div className="setting-row">
         <div>
-          <b>Push notification</b>
-          <p>Show an alert when the report is ready.</p>
+          <b>{t("settings.push")}</b>
+          <p>{t("settings.pushDesc")}</p>
         </div>
         <Switch checked={push} onCheckedChange={setPush} />
       </div>
       <div className="report-preview">
-        <p className="eyebrow">Report includes</p>
+        <p className="eyebrow">{t("settings.reportIncludes")}</p>
         <div className="tag-cloud">
-          {[
-            "Completed tasks",
-            "Missed tasks",
-            "Workout completion",
-            "Nutrition completion",
-            "Completion %",
-            "Check-in status",
-          ].map((x) => (
-            <span key={x}>
-              <Check /> {x}
+          {includes.map((key) => (
+            <span key={key}>
+              <Check /> {t(key)}
             </span>
           ))}
         </div>
       </div>
       <Button className="mt-6" onClick={save} disabled={updateSettings.isPending}>
-        {updateSettings.isPending ? "Saving..." : "Save preferences"}
+        {updateSettings.isPending ? t("common.saving") : t("settings.savePrefs")}
       </Button>
     </section>
   );

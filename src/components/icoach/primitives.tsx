@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
+import { MIN_PASSWORD_LENGTH } from "@/lib/account";
+import { useI18n } from "@/lib/i18n";
+import { errorText } from "@/lib/i18n/errors";
 
 export function PageHead({
   eyebrow,
@@ -31,19 +34,20 @@ export function PageHead({
 export function ProgressBar({ value, thin = false }: { value: number; thin?: boolean }) {
   return (
     <div className={thin ? "progress-track h-1" : "progress-track h-2"}>
-      <span className="progress-fill" style={{ width: `${value}%` }} />
+      <span className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
     </div>
   );
 }
 export function ProgressRing({
   value,
   size = 112,
-  label = "COMPLETE",
+  label,
 }: {
   value: number;
   size?: number;
   label?: string;
 }) {
+  const { t } = useI18n();
   const r = 42,
     c = 2 * Math.PI * r;
   return (
@@ -62,7 +66,7 @@ export function ProgressRing({
       <div className="text-center">
         <b className="font-display text-2xl">{value}%</b>
         <span className="block text-[8px] font-bold tracking-[.16em] text-muted-foreground">
-          {label}
+          {label ?? t("ring.complete")}
         </span>
       </div>
     </div>
@@ -112,13 +116,13 @@ export function TaskRow({
       <span className={`task-check ${done ? "checked" : ""}`}>
         {done ? <Check size={15} /> : icon}
       </span>
-      <span className="min-w-0 flex-1 text-left">
+      <span className="min-w-0 flex-1 text-start">
         <b className="block truncate text-sm">{title}</b>
         <span className="text-xs text-muted-foreground">{meta}</span>
       </span>
       <ChevronRight
         size={17}
-        className="text-muted-foreground transition-transform group-hover:translate-x-1"
+        className="text-muted-foreground transition-transform group-hover:translate-x-1 rtl:group-hover:-translate-x-1"
       />
     </button>
   );
@@ -143,70 +147,82 @@ export function SectionTitle({
     </div>
   );
 }
-/** Shared "Change password" card for coach and client settings — the only password-change
- *  path in the app, including for athletes whose password was originally set by their coach. */
+/** Empty/loading/error state inside a panel. */
+export function EmptyState({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="panel p-10 text-center">
+      <p className="text-sm text-muted-foreground">{children}</p>
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}
+/** Shared "Change password" card for coach and client settings. */
 export function ChangePasswordCard() {
+  const i18n = useI18n();
+  const { t } = i18n;
   const { updatePassword } = useAuth();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async () => {
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      toast.error(t("validation.passwordLength", { min: MIN_PASSWORD_LENGTH }));
       return;
     }
     if (password !== confirm) {
-      toast.error("Passwords don't match.");
+      toast.error(t("validation.passwordMismatch"));
       return;
     }
     setLoading(true);
     const { error } = await updatePassword(password);
     setLoading(false);
     if (error) {
-      toast.error(error);
+      toast.error(errorText(error, i18n, "errors.generic"));
       return;
     }
-    toast.success("Password updated.");
+    toast.success(t("password.updated"));
     setPassword("");
     setConfirm("");
   };
 
   return (
     <section className="settings-panel">
-      <p className="eyebrow">Security</p>
-      <h2>Change password</h2>
-      <p className="text-sm text-muted-foreground">
-        Set a new password for signing in — useful if your coach set your original one.
-      </p>
+      <p className="eyebrow">{t("password.eyebrow")}</p>
+      <h2>{t("password.title")}</h2>
+      <p className="text-sm text-muted-foreground">{t("password.body")}</p>
       <div className="setting-row">
         <div className="w-full">
-          <Label htmlFor="new-password">New password</Label>
+          <Label htmlFor="new-password">{t("password.new")}</Label>
           <Input
             id="new-password"
             type="password"
+            dir="ltr"
+            autoComplete="new-password"
             className="mt-2"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 8 characters"
+            placeholder={t("password.newPlaceholder")}
           />
         </div>
       </div>
       <div className="setting-row">
         <div className="w-full">
-          <Label htmlFor="confirm-password">Confirm new password</Label>
+          <Label htmlFor="confirm-password">{t("password.confirm")}</Label>
           <Input
             id="confirm-password"
             type="password"
+            dir="ltr"
+            autoComplete="new-password"
             className="mt-2"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Repeat new password"
+            placeholder={t("password.confirmPlaceholder")}
           />
         </div>
       </div>
       <Button className="mt-6" onClick={onSubmit} disabled={loading}>
-        {loading ? "Updating..." : "Update password"}
+        {loading ? t("password.submitting") : t("password.submit")}
       </Button>
     </section>
   );

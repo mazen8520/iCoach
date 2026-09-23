@@ -1,22 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CoachPage } from "@/components/icoach/coach-pages";
+import { pageMeta } from "@/lib/i18n";
 
 export const Route = createFileRoute("/coach/clients")({
-  head: () => ({
-    meta: [
-      { title: "Clients — iCoach Coach" },
-      {
-        name: "description",
-        content: "Clients in the iCoach premium fitness coaching experience.",
-      },
-      { property: "og:title", content: "Clients — iCoach Coach" },
-      {
-        property: "og:description",
-        content: "Clients in the iCoach premium fitness coaching experience.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: ({ match }) => pageMeta(match.context.lang, "meta.coach.clients"),
   component: () => <CoachPage page="clients" />,
 });

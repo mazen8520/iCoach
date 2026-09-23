@@ -1,67 +1,59 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, ChevronRight, Dumbbell, MoveRight, Play, Zap } from "lucide-react";
 import { Brand } from "@/components/icoach/brand";
+import { LanguageSwitch } from "@/components/icoach/language-switch";
 import { Button } from "@/components/ui/button";
+import { pageMeta, useI18n } from "@/lib/i18n";
 import hero from "@/assets/icoach-hero-man.jpg";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "iCoach — Train Smarter. Perform Stronger." },
-      { name: "description", content: "Premium online coaching built for serious performance." },
-      { property: "og:title", content: "iCoach — Train Smarter. Perform Stronger." },
-      {
-        property: "og:description",
-        content: "Premium online coaching built for serious performance.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  head: ({ match }) => pageMeta(match.context.lang, "meta.home", "meta.homeDescription"),
   component: Landing,
 });
 function Landing() {
+  const { t } = useI18n();
   return (
     <main className="landing">
       <img
         src={hero}
         width={1920}
         height={1280}
-        alt="Athlete performing a barbell squat"
+        alt={t("landing.heroAlt")}
         className="landing-image"
       />
       <div className="landing-shade" />
       <header className="landing-nav">
         <Brand />
         <span className="hidden text-xs font-bold uppercase tracking-[.18em] text-muted-foreground md:block">
-          Built for the work
+          {t("landing.builtFor")}
         </span>
-        <Link to="/client/dashboard">
-          <Button variant="outline" size="sm">
-            Enter iCoach <ArrowUpRight />
-          </Button>
-        </Link>
-      </header>
-      <section className="landing-copy">
-        <p className="eyebrow animate-enter">PERFORMANCE COACHING · REDEFINED</p>
-        <h1>
-          Train. Track.
-          <br />
-          <em>Transform.</em>
-        </h1>
-        <p className="landing-description">
-          One focused system for every workout, meal, check-in and coaching moment that moves you
-          forward.
-        </p>
-        <div className="landing-actions">
-          <Link to="/client/dashboard">
-            <Button size="lg">
-              I’m an athlete <MoveRight />
+        <div className="flex items-center gap-2">
+          <LanguageSwitch />
+          {/* Signing in (or being signed in already) decides which dashboard opens. */}
+          <Link to="/sign-in">
+            <Button variant="outline" size="sm">
+              {t("landing.enter")} <ArrowUpRight />
             </Button>
           </Link>
-          <Link to="/coach/dashboard">
+        </div>
+      </header>
+      <section className="landing-copy">
+        <p className="eyebrow animate-enter">{t("landing.eyebrow")}</p>
+        <h1>
+          {t("landing.headline1")}
+          <br />
+          <em>{t("landing.headline2")}</em>
+        </h1>
+        <p className="landing-description">{t("landing.description")}</p>
+        <div className="landing-actions">
+          <Link to="/sign-in" search={{ as: "athlete" }}>
+            <Button size="lg">
+              {t("landing.athlete")} <MoveRight />
+            </Button>
+          </Link>
+          <Link to="/sign-in" search={{ as: "coach" }}>
             <Button variant="outline" size="lg">
-              I’m a coach <ChevronRight />
+              {t("landing.coach")} <ChevronRight />
             </Button>
           </Link>
         </div>
@@ -69,23 +61,23 @@ function Landing() {
           <div>
             <Zap />
             <b>87%</b>
-            <span>avg. completion</span>
+            <span>{t("landing.proof.completion")}</span>
           </div>
           <div>
             <Dumbbell />
             <b>24</b>
-            <span>active athletes</span>
+            <span>{t("landing.proof.athletes")}</span>
           </div>
           <div>
             <Play />
             <b>164</b>
-            <span>training sessions</span>
+            <span>{t("landing.proof.sessions")}</span>
           </div>
         </div>
       </section>
       <div className="landing-scroll">
         <span />
-        SCROLL TO MOVE
+        {t("landing.scroll")}
       </div>
     </main>
   );

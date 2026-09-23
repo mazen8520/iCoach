@@ -1,22 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { CoachPage } from "@/components/icoach/coach-pages";
+import { pageMeta } from "@/lib/i18n";
 
 export const Route = createFileRoute("/coach/messages")({
-  head: () => ({
-    meta: [
-      { title: "Messages — iCoach Coach" },
-      {
-        name: "description",
-        content: "Messages in the iCoach premium fitness coaching experience.",
-      },
-      { property: "og:title", content: "Messages — iCoach Coach" },
-      {
-        property: "og:description",
-        content: "Messages in the iCoach premium fitness coaching experience.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-  }),
+  // ?c= opens a specific conversation (e.g. "Message" on an athlete profile).
+  validateSearch: (search: Record<string, unknown>): { c?: string } =>
+    typeof search["c"] === "string" ? { c: search["c"] } : {},
+  head: ({ match }) => pageMeta(match.context.lang, "meta.coach.messages"),
   component: () => <CoachPage page="messages" />,
 });

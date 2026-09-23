@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
-import { daysSince, isoDate } from "@/lib/format";
+import { addDays, daysSince, initialsFromName, isoDate } from "@/lib/format";
 import type { Profile } from "@/lib/database.types";
 import { createAthleteAccount } from "@/lib/create-athlete.functions";
 
@@ -9,11 +9,13 @@ export type ClientStatus = "on-track" | "attention" | "new";
 
 export type RosterClient = {
   id: string;
+  /** Raw values — empty/null when the athlete hasn't filled them in; the UI shows a translated
+   *  placeholder. */
   name: string;
   initials: string;
   avatarUrl: string | null;
-  goal: string;
-  programName: string;
+  goal: string | null;
+  programName: string | null;
   weeklyCompletion: number;
   streakDays: number;
   status: ClientStatus;
@@ -21,8 +23,6 @@ export type RosterClient = {
   currentWeightKg: number | null;
   joinedAt: string | null;
 };
-
-const WEEK_MS = 7 * 86_400_000;
 
 /** Coach's full roster with weekly completion, streak and status computed from real activity. */
 export function useCoachRoster() {
@@ -41,7 +41,7 @@ export function useCoachRoster() {
       const clientIds = (links ?? []).map((l) => l.client_id as string);
       if (clientIds.length === 0) return [];
 
-      const since = new Date(Date.now() - WEEK_MS).toISOString().slice(0, 10);
+      const since = isoDate(addDays(new Date(), -7));
       const [{ data: assignments }, { data: programs }, { data: checkIns }, { data: weights }] =
         await Promise.all([
           supabase
@@ -66,6 +66,7 @@ export function useCoachRoster() {
             .order("entry_date", { ascending: false }),
         ]);
 
+      const today = isoDate();
       return (links ?? []).map((link) => {
         const clientId = link.client_id as string;
         const profile = link.profiles as unknown as Pick<
@@ -86,10 +87,10 @@ export function useCoachRoster() {
           .filter(Boolean)
           .sort()
           .pop() as string | undefined;
-        const weight = (weights ?? []).find((w) => w.client_id === clientId);
+        const weight = (weights ?? []).find((w) => w.client_id === clientId && w.weight_kg != null);
 
         const overdueWorkout = myAssignments.some(
-          (a) => a.status === "scheduled" && a.scheduled_date < isoDate(),
+          (a) => a.status === "scheduled" && a.scheduled_date < today,
         );
         const checkInOverdue = daysSince(lastCheckIn?.submitted_at) > 9;
         const isNew = daysSince(link.joined_at) <= 13;
@@ -101,11 +102,11 @@ export function useCoachRoster() {
 
         return {
           id: clientId,
-          name: profile?.full_name || "Unnamed athlete",
-          initials: initials(profile?.full_name),
+          name: profile?.full_name?.trim() ?? "",
+          initials: initialsFromName(profile?.full_name),
           avatarUrl: profile?.avatar_url ?? null,
-          goal: profile?.goal || "No goal set",
-          programName: program?.name || "No active program",
+          goal: profile?.goal?.trim() || null,
+          programName: program?.name ?? null,
           weeklyCompletion,
           streakDays,
           status,
@@ -116,14 +117,6 @@ export function useCoachRoster() {
       });
     },
   });
-}
-
-function initials(name?: string | null) {
-  if (!name?.trim()) return "?";
-  const parts = name.trim().split(/\s+/);
-  return (
-    (parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "")
-  ).toUpperCase();
 }
 
 /** Consecutive days up to today where every assigned workout was completed. Days with no
@@ -139,8 +132,7 @@ export function computeStreak(assignments: { scheduled_date: string; status: str
   let streak = 0;
   const cursor = new Date();
   for (let i = 0; i < 60; i++) {
-    const key = cursor.toISOString().slice(0, 10);
-    const day = byDate.get(key);
+    const day = byDate.get(isoDate(cursor));
     if (day && day.completed < day.total) break;
     if (day) streak++;
     cursor.setDate(cursor.getDate() - 1);
@@ -148,30 +140,67 @@ export function computeStreak(assignments: { scheduled_date: string; status: str
   return streak;
 }
 
+export type ClientProfileDetail = Pick<
+  Profile,
+  | "id"
+  | "email"
+  | "full_name"
+  | "avatar_url"
+  | "goal"
+  | "phone"
+  | "age"
+  | "sex"
+  | "height_cm"
+  | "created_at"
+> & { joined_at: string | null };
+
+/** Coach view: one athlete's profile — only resolves if that athlete is linked to THIS coach,
+ *  so a guessed or stale client id never shows another coach's athlete. */
+export function useClientProfile(clientId: string) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["client-profile", user?.id, clientId],
+    enabled: !!user && !!clientId,
+    queryFn: async (): Promise<ClientProfileDetail | null> => {
+      const { data, error } = await supabase
+        .from("coach_clients")
+        .select(
+          "joined_at, profiles:client_id(id, email, full_name, avatar_url, goal, phone, age, sex, height_cm, created_at)",
+        )
+        .eq("coach_id", user!.id)
+        .eq("client_id", clientId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data?.profiles) return null;
+      const profile = data.profiles as unknown as Omit<ClientProfileDetail, "joined_at">;
+      return { ...profile, joined_at: data.joined_at };
+    },
+  });
+}
+
 export type NewAthleteInput = {
   fullName: string;
   email: string;
-  password: string;
   age?: number;
   sex?: "male" | "female" | "other";
   heightCm?: number;
   weightKg?: number;
 };
 
-/** Coach-only: creates a real auth account + profile for an athlete and links them to the
- *  coach, via a server function so the service-role key never reaches the browser. */
+/** Coach-only: creates a real auth account + profile for an athlete (with the default temporary
+ *  password — the coach never sets it) and links them to the coach, via a server function so the
+ *  service-role key never reaches the browser. */
 export function useCreateAthlete() {
   const { session } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: NewAthleteInput) => {
-      if (!session) throw new Error("Your session has expired. Please sign in again.");
+      if (!session) throw new Error("SESSION_EXPIRED");
       return createAthleteAccount({
         data: {
           accessToken: session.access_token,
           fullName: input.fullName,
           email: input.email,
-          password: input.password,
           ...(input.age !== undefined ? { age: input.age } : {}),
           ...(input.sex !== undefined ? { sex: input.sex } : {}),
           ...(input.heightCm !== undefined ? { heightCm: input.heightCm } : {}),

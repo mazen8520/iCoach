@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { type ReactNode } from "react";
 import { Brand } from "./brand";
+import { LanguageSwitch } from "./language-switch";
 import hero from "@/assets/icoach-hero-man.jpg";
 
 export function AuthLayout({
@@ -16,8 +17,8 @@ export function AuthLayout({
   subtitle: string;
   children: ReactNode;
   footer?: ReactNode;
-  /** Horizontal position of the card within the hero. Defaults to "end" (existing split-screen
-   *  look); sign-in uses "center" to sit centered within the viewport instead. */
+  /** Horizontal position of the card within the hero. Defaults to "end" (the split-screen look
+   *  of coach sign-up); the sign-in, recovery and password pages use "center". */
   align?: "end" | "center";
 }) {
   return (
@@ -28,6 +29,7 @@ export function AuthLayout({
         <Link to="/">
           <Brand />
         </Link>
+        <LanguageSwitch />
       </header>
       <div className="auth-wrap">
         <div className="panel-elevated auth-card animate-enter">

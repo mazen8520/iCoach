@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
-import { isoDate } from "@/lib/format";
+import { addDays, isoDate } from "@/lib/format";
 
 export function useProgressEntries(clientId?: string, limit = 30) {
   const { user } = useAuth();
@@ -90,7 +90,7 @@ export function useCompletionStats(days = 30) {
     queryKey: ["completion-stats", user?.id, days],
     enabled: !!user,
     queryFn: async () => {
-      const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+      const since = isoDate(addDays(new Date(), -days));
       const [{ data: workouts }, { data: meals }] = await Promise.all([
         supabase
           .from("workout_assignments")

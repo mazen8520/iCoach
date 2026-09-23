@@ -122,6 +122,7 @@ export interface NutritionPlanRow {
   target_carbs_g: number;
   target_fat_g: number;
   is_active: boolean;
+  notes: string | null;
   created_at: string;
 }
 
@@ -257,8 +258,26 @@ export interface NotificationRow {
   body: string | null;
   related_entity_type: string | null;
   related_entity_id: string | null;
+  /** Structured values (actor_name, workout_title, meeting_title, event_title, ...) the UI uses
+   *  to render the notification in the viewer's language; `title` is the English fallback. */
+  metadata: Record<string, string | null>;
   read_at: string | null;
   created_at: string;
+}
+
+export type ScheduleEventType = "session" | "check_in" | "reminder" | "call" | "other";
+
+export interface ScheduleEventRow {
+  id: string;
+  coach_id: string;
+  client_id: string | null;
+  title: string;
+  description: string | null;
+  event_type: ScheduleEventType;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 type TableDef<Row, Insert, Update = Partial<Insert>> = {
@@ -325,6 +344,10 @@ export interface Database {
       notifications: TableDef<
         NotificationRow,
         Omit<NotificationRow, "id" | "created_at"> & { id?: string }
+      >;
+      schedule_events: TableDef<
+        ScheduleEventRow,
+        Omit<ScheduleEventRow, "id" | "created_at" | "updated_at"> & { id?: string }
       >;
     };
     Views: Record<string, never>;
