@@ -14,8 +14,7 @@ import {
   zoomConfig,
   type MeetingInput,
 } from "./server/zoom/api";
-import { decryptToken } from "./server/zoom/crypto";
-import { supabaseConnectionStore, withZoomToken } from "./server/zoom/tokens";
+import { getValidAccessToken, supabaseConnectionStore, withZoomToken } from "./server/zoom/tokens";
 import type { MeetingRow } from "./database.types";
 
 function validator<T extends z.ZodTypeAny>(schema: T) {
@@ -127,17 +126,12 @@ export const disconnectZoom = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { coachId } = await requireCoach(data.accessToken);
     const { config, store } = zoomContext();
-    const row = await store.get(coachId);
-    if (row) {
-      // Revoking the refresh token also invalidates its access tokens and removes the app
-      // from the coach's Zoom account. Best effort: the local connection is removed regardless.
-      let refreshToken: string | null = null;
-      try {
-        refreshToken = decryptToken(row.refresh_token_enc, config.encryptionKey);
-      } catch {
-        // Undecryptable (encryption key changed): nothing to revoke from here.
-      }
-      if (refreshToken) await revokeToken(config, refreshToken);
+    if (await store.get(coachId)) {
+      // Zoom's revoke endpoint takes an access token, so get a current one (refreshing if it has
+      // expired). If that fails the grant is already gone on Zoom's side.
+      const accessToken = await getValidAccessToken(store, config, coachId).catch(() => null);
+      const revoked = accessToken ? await revokeToken(config, accessToken) : false;
+      console.log(`Zoom disconnect: revoke ${revoked ? "succeeded" : "not confirmed"}`);
       await store.remove(coachId);
     }
     return { disconnected: true };

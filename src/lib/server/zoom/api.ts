@@ -132,19 +132,24 @@ export function refreshTokens(config: ZoomConfig, refreshToken: string) {
   return tokenRequest(config, { grant_type: "refresh_token", refresh_token: refreshToken });
 }
 
-/** Best effort: the connection is removed on our side regardless. */
-export async function revokeToken(config: ZoomConfig, token: string): Promise<void> {
+/**
+ * Revokes an ACCESS token (what Zoom's revoke endpoint takes), which ends the app's authorization
+ * for that user. Best effort: callers remove the connection on their side regardless.
+ */
+export async function revokeToken(config: ZoomConfig, accessToken: string): Promise<boolean> {
   try {
-    await fetch(`${ZOOM_OAUTH}/revoke`, {
+    const res = await fetch(`${ZOOM_OAUTH}/revoke`, {
       method: "POST",
       headers: {
         Authorization: basicAuth(config),
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ token }),
+      body: new URLSearchParams({ token: accessToken }),
     });
+    const body = (await res.json().catch(() => null)) as { status?: string } | null;
+    return res.ok && body?.status === "success";
   } catch {
-    // Network failure: the token still expires within the hour.
+    return false;
   }
 }
 

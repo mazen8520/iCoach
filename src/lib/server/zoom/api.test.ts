@@ -8,6 +8,7 @@ import {
   getMeeting,
   pkceChallenge,
   refreshTokens,
+  revokeToken,
   updateMeeting,
 } from "./api";
 import { config, json, mockFetch, noContent } from "./test-helpers";
@@ -76,6 +77,17 @@ describe("OAuth", () => {
   it("treats a rejected refresh token as revoked", async () => {
     mockFetch(json({ reason: "Invalid Token!", error: "invalid_grant" }, 400));
     await expectZoomError(refreshTokens(config, "r1"), "ZOOM_REVOKED");
+  });
+
+  it("revokes the ACCESS token with Basic auth and reports success", async () => {
+    const calls = mockFetch(json({ status: "success" }));
+    expect(await revokeToken(config, "access-1")).toBe(true);
+    expect(calls[0]!.url).toBe("https://zoom.us/oauth/revoke");
+    expect(Object.fromEntries(calls[0]!.init.body as URLSearchParams)).toEqual({
+      token: "access-1",
+    });
+    mockFetch(json({ reason: "Invalid Token!" }, 400));
+    expect(await revokeToken(config, "expired")).toBe(false);
   });
 
   it("reports token-endpoint rate limiting", async () => {
