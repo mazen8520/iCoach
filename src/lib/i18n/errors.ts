@@ -11,6 +11,16 @@ const CODE_KEYS: Record<string, TranslationKey> = {
   PASSWORD_SAME_AS_TEMPORARY: "errors.passwordSameAsTemporary",
   PASSWORD_CHANGE_NOT_REQUIRED: "errors.passwordChangeNotRequired",
   PROFILE_MISSING: "errors.profileMissing",
+  NOT_YOUR_CLIENT: "errors.permissionDenied",
+  MEETING_NOT_FOUND: "errors.meetingNotFound",
+  MEETING_NOT_EDITABLE: "errors.meetingNotEditable",
+  MEETING_NOT_ON_ZOOM: "errors.meetingNotOnZoom",
+  ZOOM_NOT_CONFIGURED: "errors.zoomNotConfigured",
+  ZOOM_NOT_CONNECTED: "errors.zoomNotConnected",
+  ZOOM_REVOKED: "errors.zoomRevoked",
+  ZOOM_RATE_LIMITED: "errors.zoomRateLimited",
+  ZOOM_NOT_FOUND: "errors.zoomNotFound",
+  ZOOM_REQUEST_FAILED: "errors.zoomRequestFailed",
 };
 
 /** Messages Supabase Auth / PostgREST / the browser commonly return. */

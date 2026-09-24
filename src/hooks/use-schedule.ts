@@ -30,6 +30,8 @@ export type ScheduleItem = {
   eventType: ScheduleEventType | null;
   status: WorkoutStatus | MeetingStatus | null;
   videoUrl: string | null;
+  /** Set for meetings hosted on the coach's Zoom account. */
+  zoomMeetingId: string | null;
 };
 
 const DEFAULT_TRAINING_TIME = "09:00";
@@ -73,7 +75,7 @@ export function useCoachSchedule(from: string, to: string) {
         supabase
           .from("meetings")
           .select(
-            "id, client_id, scheduled_at, duration_minutes, title, notes, status, video_url, profiles:client_id(full_name)",
+            "id, client_id, scheduled_at, duration_minutes, title, notes, status, video_url, zoom_meeting_id, profiles:client_id(full_name)",
           )
           .eq("coach_id", user!.id)
           .gte("scheduled_at", startIso)
@@ -118,6 +120,7 @@ export function useCoachSchedule(from: string, to: string) {
           eventType: null,
           status: a.status,
           videoUrl: null,
+          zoomMeetingId: null,
         });
       }
       for (const meeting of meetings.data ?? []) {
@@ -140,6 +143,7 @@ export function useCoachSchedule(from: string, to: string) {
           eventType: null,
           status: meeting.status,
           videoUrl: meeting.video_url,
+          zoomMeetingId: meeting.zoom_meeting_id,
         });
       }
       for (const event of (events.data ?? []) as (ScheduleEventRow & {
@@ -167,6 +171,7 @@ export function useCoachSchedule(from: string, to: string) {
           eventType: event.event_type,
           status: null,
           videoUrl: null,
+          zoomMeetingId: null,
         });
       }
       return items.sort((a, b) => a.startsAt - b.startsAt);

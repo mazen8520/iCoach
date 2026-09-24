@@ -2,6 +2,12 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tansta
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import type { MeetingRow, MeetingStatus } from "@/lib/database.types";
+import {
+  cancelZoomMeeting,
+  getZoomStartUrl,
+  scheduleZoomMeeting,
+  updateZoomMeeting,
+} from "@/lib/zoom.functions";
 
 export type MeetingWithOther = MeetingRow & {
   other: { id: string; full_name: string; avatar_url: string | null } | null;
@@ -33,23 +39,93 @@ function invalidateMeetingQueries(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ["coach-schedule"] });
 }
 
+export type MeetingFormInput = {
+  title: string;
+  /** ISO timestamp. */
+  scheduledAt: string;
+  durationMinutes: number;
+  notes: string | null;
+};
+
+function browserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function useAccessToken() {
+  const { session } = useAuth();
+  return () => {
+    if (!session) throw new Error("SESSION_EXPIRED");
+    return session.access_token;
+  };
+}
+
+/** Creates the session and its Zoom meeting (server-side, with the coach's Zoom account). */
 export function useScheduleMeeting() {
-  const { user } = useAuth();
+  const token = useAccessToken();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: {
-      client_id: string;
-      title: string;
-      scheduled_at: string;
-      duration_minutes?: number;
-      notes?: string | null;
-      /** The Zoom meeting link. */
-      video_url?: string | null;
-    }) => {
-      const { error } = await supabase.from("meetings").insert({ ...input, coach_id: user!.id });
-      if (error) throw error;
+    mutationFn: (input: MeetingFormInput & { clientId: string }) => {
+      const timezone = browserTimeZone();
+      return scheduleZoomMeeting({
+        data: { accessToken: token(), ...input, ...(timezone ? { timezone } : {}) },
+      });
     },
     onSuccess: () => invalidateMeetingQueries(queryClient),
+  });
+}
+
+/** Reschedules/renames the session and its Zoom meeting. */
+export function useEditMeeting() {
+  const token = useAccessToken();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MeetingFormInput & { meetingId: string }) => {
+      const timezone = browserTimeZone();
+      return updateZoomMeeting({
+        data: { accessToken: token(), ...input, ...(timezone ? { timezone } : {}) },
+      });
+    },
+    onSuccess: () => invalidateMeetingQueries(queryClient),
+  });
+}
+
+/** Cancels the session and deletes its Zoom meeting. */
+export function useCancelMeeting() {
+  const token = useAccessToken();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (meetingId: string) =>
+      cancelZoomMeeting({ data: { accessToken: token(), meetingId } }),
+    onSuccess: () => invalidateMeetingQueries(queryClient),
+  });
+}
+
+/**
+ * Opens the host start link. The tab is opened synchronously on click (so popup blockers allow
+ * it) and pointed at the link once the server has fetched a fresh one from Zoom.
+ */
+export function useStartMeeting() {
+  const token = useAccessToken();
+  return useMutation({
+    mutationFn: async (meetingId: string) => {
+      const tab = window.open("", "_blank");
+      try {
+        const { url } = await getZoomStartUrl({ data: { accessToken: token(), meetingId } });
+        if (tab) {
+          tab.opener = null;
+          tab.location.href = url;
+        } else {
+          window.location.assign(url);
+        }
+      } catch (err) {
+        tab?.close();
+        throw err;
+      }
+    },
   });
 }
 

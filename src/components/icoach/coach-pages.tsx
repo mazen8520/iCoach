@@ -57,9 +57,11 @@ import {
   Field,
   FieldSelect,
   MeetingDetailsDialog,
+  StartMeetingButton,
   VideoPlayerDialog,
   type PlayableVideo,
 } from "./shared";
+import { isMeetingLive } from "@/lib/meeting-draft";
 import {
   AssignWorkoutDialog,
   CheckInCard,
@@ -69,7 +71,9 @@ import {
 import { ClientProfile } from "./coach-client-profile";
 import { Schedule } from "./coach-schedule";
 import { Nutrition } from "./coach-nutrition";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useConnectZoom, useDisconnectZoom, useZoomStatus } from "@/hooks/use-zoom";
 import { DEFAULT_ATHLETE_PASSWORD } from "@/lib/account";
 import { useCoachRoster, useCreateAthlete, type ClientStatus } from "@/hooks/use-clients";
 import { useCoachDashboard } from "@/hooks/use-dashboard";
@@ -292,7 +296,9 @@ function CoachDashboard() {
                       {t("coach.dashboard.videoCall", { minutes: m.duration_minutes })}
                     </p>
                   </div>
-                  {isHttpUrl(m.video_url) ? (
+                  {m.zoom_meeting_id ? (
+                    <StartMeetingButton meetingId={m.id} iconOnly />
+                  ) : isHttpUrl(m.video_url) ? (
                     <a
                       href={m.video_url}
                       target="_blank"
@@ -1625,18 +1631,20 @@ function Meetings() {
           <div>
             <span className="live-chip">
               <span />
-              {minutesUntil <= 0
-                ? t("meeting.inProgress")
-                : minutesUntil < 60
-                  ? t("meeting.startsIn", { count: minutesUntil })
-                  : t("meeting.onDate", {
-                      date: fmt.date(next.scheduled_at, {
-                        weekday: "short",
-                        day: "numeric",
-                        month: "short",
-                      }),
-                      time: fmt.clock(next.scheduled_at),
-                    })}
+              {isMeetingLive(next)
+                ? t("meeting.live")
+                : minutesUntil <= 0
+                  ? t("meeting.inProgress")
+                  : minutesUntil < 60
+                    ? t("meeting.startsIn", { count: minutesUntil })
+                    : t("meeting.onDate", {
+                        date: fmt.date(next.scheduled_at, {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                        }),
+                        time: fmt.clock(next.scheduled_at),
+                      })}
             </span>
             <h2>
               {t("coach.meetings.withClient", {
@@ -1646,7 +1654,9 @@ function Meetings() {
             </h2>
             {next.notes && <p>{next.notes}</p>}
             <div className="mt-5 flex flex-wrap gap-3">
-              {nextLink ? (
+              {next.zoom_meeting_id ? (
+                <StartMeetingButton meetingId={next.id} />
+              ) : nextLink ? (
                 <a href={nextLink} target="_blank" rel="noreferrer">
                   <Button>
                     <Video />
@@ -1843,10 +1853,37 @@ const coachSettingsTabs = [
   ["profile", "settings.tab.profile"],
   ["notifications", "settings.tab.notifications"],
   ["reports", "settings.tab.dailyReports"],
+  ["integrations", "settings.tab.integrations"],
 ] as const;
+type CoachSettingsTab = (typeof coachSettingsTabs)[number][0];
+
+const ZOOM_RESULT_KEYS = {
+  connected: "zoom.result.connected",
+  denied: "zoom.result.denied",
+  expired: "zoom.result.expired",
+  error: "zoom.result.error",
+  install: "zoom.result.install",
+} as const;
+
 function Settings() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<(typeof coachSettingsTabs)[number][0]>("profile");
+  const search = useSearch({ from: "/coach/settings" });
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState<CoachSettingsTab>(search.tab ?? "profile");
+
+  // Back from Zoom's consent screen (/api/zoom/callback redirects here with ?zoom=<result>).
+  useEffect(() => {
+    if (!search.zoom) return;
+    const message = t(ZOOM_RESULT_KEYS[search.zoom]);
+    if (search.zoom === "connected") toast.success(message);
+    else if (search.zoom === "install") toast.info(message);
+    else toast.error(message);
+    void queryClient.invalidateQueries({ queryKey: ["zoom-status"] });
+    setTab("integrations");
+    void navigate({ to: "/coach/settings", search: { tab: "integrations" }, replace: true });
+  }, [search.zoom, t, queryClient, navigate]);
+
   return (
     <>
       <PageHead
@@ -1866,8 +1903,85 @@ function Settings() {
         {tab === "profile" && <ProfileSettingsPanel />}
         {tab === "notifications" && <NotificationSettingsPanel />}
         {tab === "reports" && <DailyReportsPanel />}
+        {tab === "integrations" && <ZoomSettingsPanel />}
       </div>
     </>
+  );
+}
+
+function ZoomSettingsPanel() {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const { data: zoom, isLoading } = useZoomStatus();
+  const connect = useConnectZoom();
+  const disconnect = useDisconnectZoom();
+  const [confirming, setConfirming] = useState(false);
+
+  const onConnect = () =>
+    connect.mutate(undefined, {
+      onError: (err) => toast.error(errorText(err, i18n, "zoom.connectFailed")),
+    });
+
+  const onDisconnect = async () => {
+    try {
+      await disconnect.mutateAsync();
+      toast.success(t("zoom.disconnected"));
+      setConfirming(false);
+    } catch (err) {
+      toast.error(errorText(err, i18n, "zoom.disconnectFailed"));
+    }
+  };
+
+  const status = isLoading
+    ? t("common.loading")
+    : zoom?.connected
+      ? zoom.email
+        ? t("zoom.connectedAs", { email: zoom.email })
+        : t("zoom.connected")
+      : t("zoom.notConnected");
+
+  return (
+    <div className="space-y-6">
+      <section className="settings-panel">
+        <p className="eyebrow">{t("zoom.eyebrow")}</p>
+        <h2>{t("zoom.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("zoom.body")}</p>
+        <div className="setting-row">
+          <div className="min-w-0">
+            <b>{t("meeting.status")}</b>
+            <p className="break-words" data-testid="zoom-status">
+              {status}
+            </p>
+          </div>
+          {zoom?.connected ? (
+            <Button variant="outline" onClick={() => setConfirming(true)}>
+              {t("zoom.disconnect")}
+            </Button>
+          ) : (
+            <Button
+              onClick={onConnect}
+              disabled={isLoading || connect.isPending || zoom?.configured === false}
+            >
+              <Video />
+              {connect.isPending ? t("zoom.connecting") : t("zoom.connect")}
+            </Button>
+          )}
+        </div>
+        {zoom?.configured === false && (
+          <p className="mt-3 text-sm text-destructive">{t("zoom.notConfigured")}</p>
+        )}
+      </section>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t("zoom.disconnectConfirmTitle")}
+        description={t("zoom.disconnectConfirmBody")}
+        confirmLabel={t("zoom.disconnect")}
+        pendingLabel={t("common.saving")}
+        pending={disconnect.isPending}
+        onConfirm={onDisconnect}
+      />
+    </div>
   );
 }
 function ProfileSettingsPanel() {

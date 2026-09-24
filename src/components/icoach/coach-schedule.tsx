@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { PageHead } from "./primitives";
-import { ConfirmDialog, Field, FieldSelect } from "./shared";
+import { ConfirmDialog, Field, FieldSelect, StartMeetingButton } from "./shared";
 import { useDisplayName } from "./coach-shared";
 import { useCoachRoster } from "@/hooks/use-clients";
 import {
@@ -367,7 +367,9 @@ function ScheduleItemDialog({ item, onClose }: { item: ScheduleItem | null; onCl
               </Link>
             )}
             {item.kind === "meeting" &&
-              (isHttpUrl(item.videoUrl) && item.status === "scheduled" ? (
+              (item.zoomMeetingId && item.status === "scheduled" ? (
+                <StartMeetingButton meetingId={item.id} className="w-full" />
+              ) : isHttpUrl(item.videoUrl) && item.status === "scheduled" ? (
                 <a href={item.videoUrl} target="_blank" rel="noreferrer">
                   <Button className="w-full">
                     <Video />

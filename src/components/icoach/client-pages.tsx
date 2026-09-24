@@ -38,6 +38,7 @@ import {
   TaskRow,
 } from "./primitives";
 import { MeetingDetailsDialog, VideoPlayerDialog, type PlayableVideo } from "./shared";
+import { isMeetingLive } from "@/lib/meeting-draft";
 import { useAuth } from "@/lib/auth";
 import { useMyCoach } from "@/hooks/use-clients";
 import { useClientStats, useClientToday, useToggleHabitLog } from "@/hooks/use-dashboard";
@@ -1329,19 +1330,21 @@ function Meetings() {
           <div>
             <span className="live-chip">
               <Clock3 />
-              {minutesUntil <= 0
-                ? t("meeting.inProgress")
-                : t("meeting.onDate", {
-                    date:
-                      isoDate(new Date(next.scheduled_at)) === isoDate()
-                        ? t("common.today")
-                        : fmt.date(next.scheduled_at, {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                          }),
-                    time: fmt.clock(next.scheduled_at),
-                  })}
+              {isMeetingLive(next)
+                ? t("meeting.live")
+                : minutesUntil <= 0
+                  ? t("meeting.inProgress")
+                  : t("meeting.onDate", {
+                      date:
+                        isoDate(new Date(next.scheduled_at)) === isoDate()
+                          ? t("common.today")
+                          : fmt.date(next.scheduled_at, {
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                            }),
+                      time: fmt.clock(next.scheduled_at),
+                    })}
             </span>
             <h2>{next.title}</h2>
             <p>{next.notes || t("client.meetings.withCoach", { name: coachName })}</p>

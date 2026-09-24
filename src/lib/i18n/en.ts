@@ -131,6 +131,15 @@ const errors = {
   "errors.endBeforeStart": "The end time must be after the start time.",
   "errors.profileMissing": "We couldn't load your account. Contact your coach or support.",
   "errors.checkInExists": "You've already submitted this week's check-in.",
+  "errors.zoomNotConfigured": "Zoom isn't set up on this server yet. Contact support.",
+  "errors.zoomNotConnected": "Connect your Zoom account in Settings → Integrations first.",
+  "errors.zoomRevoked": "Your Zoom connection expired or was removed. Reconnect Zoom in Settings.",
+  "errors.zoomRateLimited": "Zoom is busy right now. Wait a minute and try again.",
+  "errors.zoomNotFound": "That meeting no longer exists on Zoom.",
+  "errors.zoomRequestFailed": "Zoom couldn't complete that request. Please try again.",
+  "errors.meetingNotFound": "That meeting no longer exists.",
+  "errors.meetingNotEditable": "Only upcoming meetings can be changed.",
+  "errors.meetingNotOnZoom": "This meeting isn't hosted on Zoom.",
 };
 
 const validation = {
@@ -770,9 +779,7 @@ const coachMeetings = {
   "coach.meetings.titlePlaceholder": "Progress review",
   "coach.meetings.dateTime": "Date & time",
   "coach.meetings.duration": "Duration",
-  "coach.meetings.zoomLink": "Zoom Meeting Link",
   "coach.meetings.zoomPlaceholder": "https://zoom.us/j/123456789",
-  "coach.meetings.zoomHint": "Paste the invite link from Zoom — your athlete joins with one tap.",
   "coach.meetings.notes": "Notes",
   "coach.meetings.notesPlaceholder": "Agenda or talking points",
   "coach.meetings.submit": "Schedule",
@@ -811,6 +818,50 @@ const coachMeetings = {
   "meeting.updated": "Meeting updated.",
   "meeting.updateFailed": "Couldn't update that meeting.",
   "meeting.linkPending": "Link coming soon",
+  "meeting.start": "Start meeting",
+  "meeting.starting": "Opening Zoom...",
+  "meeting.startFailed": "Couldn't open the Zoom meeting.",
+  "meeting.passcode": "Passcode",
+  "meeting.hostedOnZoom":
+    "Hosted on your Zoom account — edits and cancellations update Zoom automatically.",
+  "meeting.live": "LIVE NOW",
+  "meeting.edit": "Edit",
+  "meeting.saveChanges": "Save changes",
+  "meeting.rescheduled": "Meeting updated.",
+  "meeting.cancelConfirmTitle": "Cancel this meeting?",
+  "meeting.cancelConfirmBody":
+    "“{title}” will be cancelled and its Zoom meeting deleted. Your client won't be able to join it.",
+  "meeting.keep": "Keep meeting",
+  "meeting.cancelled": "Meeting cancelled.",
+  "meeting.cancelledNotSynced":
+    "Meeting cancelled here, but Zoom isn't connected — delete it in Zoom yourself.",
+  "zoom.eyebrow": "Video calls",
+  "zoom.title": "Zoom",
+  "zoom.body":
+    "Connect your own Zoom account and every meeting you schedule gets a Zoom link automatically. Free Zoom accounts work (free-plan meetings end after 40 minutes).",
+  "zoom.connectedAs": "Connected as {email}",
+  "zoom.connected": "Connected",
+  "zoom.notConnected": "Not connected",
+  "zoom.connect": "Connect Zoom",
+  "zoom.connecting": "Opening Zoom...",
+  "zoom.disconnect": "Disconnect",
+  "zoom.disconnectConfirmTitle": "Disconnect Zoom?",
+  "zoom.disconnectConfirmBody":
+    "New meetings can't be scheduled until you reconnect. Meetings you already scheduled keep their links, but editing or cancelling them won't update Zoom.",
+  "zoom.disconnected": "Zoom disconnected.",
+  "zoom.disconnectFailed": "Couldn't disconnect Zoom.",
+  "zoom.connectFailed": "Couldn't start the Zoom connection.",
+  "zoom.result.connected": "Zoom connected.",
+  "zoom.result.denied": "Zoom connection was cancelled.",
+  "zoom.result.expired": "That connection attempt expired. Please try again.",
+  "zoom.result.error": "Couldn't connect Zoom. Please try again.",
+  "zoom.result.install":
+    "Zoom app added. Click Connect Zoom below to link it to your iCoach account.",
+  "zoom.notConfigured": "Zoom isn't set up on this server yet.",
+  "zoom.connectFirstTitle": "Connect Zoom to schedule meetings",
+  "zoom.connectFirstBody":
+    "Meetings are hosted on your own Zoom account. Connect it once and every meeting gets a join link automatically.",
+  "zoom.autoLink": "A Zoom meeting is created on your connected account ({email}).",
 };
 
 const coachProgress = {
@@ -854,6 +905,7 @@ const settings = {
   "settings.tab.profile": "Profile",
   "settings.tab.notifications": "Notifications",
   "settings.tab.dailyReports": "Daily reports",
+  "settings.tab.integrations": "Integrations",
   "settings.yourDetails": "Your details",
   "settings.coachProfile": "Coach profile",
   "settings.coachProfileBody": "This is how your name and bio appear to your athletes.",

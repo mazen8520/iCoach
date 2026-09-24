@@ -30,6 +30,12 @@ export function localTime(value: string | Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+/** "YYYY-MM-DDTHH:MM" in local time — the value format of <input type="datetime-local">. */
+export function dateTimeLocal(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return `${isoDate(d)}T${localTime(d)}`;
+}
+
 export function startOfWeek(date: Date = new Date()): Date {
   const d = new Date(date);
   const day = (d.getDay() + 6) % 7; // Monday = 0

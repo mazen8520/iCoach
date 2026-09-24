@@ -1,9 +1,9 @@
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Video } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,14 +12,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Field, FieldSelect } from "./shared";
+import { Field, FieldSelect, MeetingFields } from "./shared";
+import { emptyMeetingDraft, useMeetingDraftInput, type MeetingDraft } from "@/lib/meeting-draft";
 import { useCoachRoster } from "@/hooks/use-clients";
 import { useAssignWorkout, useCoachWorkouts } from "@/hooks/use-workouts";
 import { useScheduleMeeting } from "@/hooks/use-meetings";
+import { useConnectZoom, useZoomStatus } from "@/hooks/use-zoom";
 import { useReviewCheckIn } from "@/hooks/use-check-ins";
 import { useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
-import { initialsFromName, isHttpUrl, isoDate } from "@/lib/format";
+import { initialsFromName, isoDate } from "@/lib/format";
 import type { CheckInRow, WorkoutStatus } from "@/lib/database.types";
 
 /** Display name for an athlete whose profile may not have a name yet. */
@@ -172,10 +174,38 @@ export function AssignWorkoutDialog({
 }
 
 // ============================================================
-// Schedule a meeting (with its Zoom link)
+// Schedule a meeting (creates its Zoom meeting on the coach's account)
 // ============================================================
 
-const DURATIONS = [15, 30, 45, 60, 90];
+/** Shown wherever a coach needs Zoom connected before they can schedule. */
+export function ConnectZoomPrompt() {
+  const i18n = useI18n();
+  const { t } = i18n;
+  const { data: zoom } = useZoomStatus();
+  const connect = useConnectZoom();
+  return (
+    <div className="space-y-2 rounded-md border border-border p-4">
+      <b className="block text-sm">{t("zoom.connectFirstTitle")}</b>
+      <p className="text-sm text-muted-foreground">{t("zoom.connectFirstBody")}</p>
+      {zoom?.configured === false ? (
+        <p className="text-sm text-destructive">{t("zoom.notConfigured")}</p>
+      ) : (
+        <Button
+          variant="outline"
+          disabled={connect.isPending}
+          onClick={() =>
+            connect.mutate(undefined, {
+              onError: (err) => toast.error(errorText(err, i18n, "zoom.connectFailed")),
+            })
+          }
+        >
+          <Video />
+          {connect.isPending ? t("zoom.connecting") : t("zoom.connect")}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 export function ScheduleMeetingDialog({
   clientId,
@@ -185,26 +215,22 @@ export function ScheduleMeetingDialog({
   trigger?: ReactNode;
 }) {
   const i18n = useI18n();
-  const { t, tp } = i18n;
+  const { t } = i18n;
   const displayName = useDisplayName();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [pickedClient, setPickedClient] = useState("");
-  const [title, setTitle] = useState("");
-  const [datetime, setDatetime] = useState("");
-  const [duration, setDuration] = useState("30");
-  const [zoomLink, setZoomLink] = useState("");
-  const [notes, setNotes] = useState("");
+  const [draft, setDraft] = useState<MeetingDraft>(emptyMeetingDraft);
   const { data: roster } = useCoachRoster();
+  const { data: zoom, isLoading: zoomLoading } = useZoomStatus();
   const schedule = useScheduleMeeting();
+  const toInput = useMeetingDraftInput();
   const targetClient = clientId ?? pickedClient;
+  const connected = !!zoom?.connected;
 
   const reset = () => {
     setPickedClient("");
-    setTitle("");
-    setDatetime("");
-    setDuration("30");
-    setZoomLink("");
-    setNotes("");
+    setDraft(emptyMeetingDraft());
   };
 
   const onSubmit = async () => {
@@ -212,33 +238,17 @@ export function ScheduleMeetingDialog({
       toast.error(t("validation.clientRequired"));
       return;
     }
-    if (!title.trim()) {
-      toast.error(t("validation.titleRequired"));
-      return;
-    }
-    if (!datetime) {
-      toast.error(t("validation.dateTimeRequired"));
-      return;
-    }
-    const link = zoomLink.trim();
-    if (link && !isHttpUrl(link)) {
-      toast.error(t("validation.zoomLink"));
-      return;
-    }
+    const input = toInput(draft);
+    if (!input) return;
     try {
-      await schedule.mutateAsync({
-        client_id: targetClient,
-        title: title.trim(),
-        scheduled_at: new Date(datetime).toISOString(),
-        duration_minutes: Number(duration),
-        video_url: link || null,
-        notes: notes.trim() || null,
-      });
+      await schedule.mutateAsync({ ...input, clientId: targetClient });
       toast.success(t("coach.meetings.scheduled"));
       setOpen(false);
       reset();
     } catch (err) {
       toast.error(errorText(err, i18n, "coach.meetings.failed"));
+      // A revoked connection has been removed server-side: show the connect prompt.
+      queryClient.invalidateQueries({ queryKey: ["zoom-status"] });
     }
   };
 
@@ -262,84 +272,41 @@ export function ScheduleMeetingDialog({
         <DialogHeader>
           <DialogTitle>{t("coach.meetings.dialogTitle")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
-          {!clientId && (
-            <Field label={t("coach.meetings.client")} htmlFor="meeting-client">
-              <FieldSelect
-                id="meeting-client"
-                value={pickedClient}
-                onChange={(e) => setPickedClient(e.target.value)}
-              >
-                <option value="">{t("coach.meetings.selectClient")}</option>
-                {(roster ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {displayName(c.name)}
-                  </option>
-                ))}
-              </FieldSelect>
-            </Field>
-          )}
-          <Field label={t("coach.meetings.meetingTitle")} htmlFor="meeting-title">
-            <Input
-              id="meeting-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t("coach.meetings.titlePlaceholder")}
-            />
-          </Field>
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
-            <Field label={t("coach.meetings.dateTime")} htmlFor="meeting-time">
-              <Input
-                id="meeting-time"
-                type="datetime-local"
-                value={datetime}
-                onChange={(e) => setDatetime(e.target.value)}
-              />
-            </Field>
-            <Field label={t("coach.meetings.duration")} htmlFor="meeting-duration">
-              <FieldSelect
-                id="meeting-duration"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-              >
-                {DURATIONS.map((d) => (
-                  <option key={d} value={d}>
-                    {tp("common.minutes", d)}
-                  </option>
-                ))}
-              </FieldSelect>
-            </Field>
-          </div>
-          <Field
-            label={t("coach.meetings.zoomLink")}
-            htmlFor="meeting-zoom"
-            hint={t("coach.meetings.zoomHint")}
-          >
-            <Input
-              id="meeting-zoom"
-              type="url"
-              dir="ltr"
-              inputMode="url"
-              value={zoomLink}
-              onChange={(e) => setZoomLink(e.target.value)}
-              placeholder={t("coach.meetings.zoomPlaceholder")}
-            />
-          </Field>
-          <Field label={t("coach.meetings.notes")} htmlFor="meeting-notes">
-            <Textarea
-              id="meeting-notes"
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("coach.meetings.notesPlaceholder")}
-            />
-          </Field>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={schedule.isPending}>
-            {schedule.isPending ? t("coach.meetings.submitting") : t("coach.meetings.submit")}
-          </Button>
-        </DialogFooter>
+        {zoomLoading ? (
+          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        ) : !connected ? (
+          <ConnectZoomPrompt />
+        ) : (
+          <>
+            <div className="space-y-3">
+              {!clientId && (
+                <Field label={t("coach.meetings.client")} htmlFor="meeting-client">
+                  <FieldSelect
+                    id="meeting-client"
+                    value={pickedClient}
+                    onChange={(e) => setPickedClient(e.target.value)}
+                  >
+                    <option value="">{t("coach.meetings.selectClient")}</option>
+                    {(roster ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {displayName(c.name)}
+                      </option>
+                    ))}
+                  </FieldSelect>
+                </Field>
+              )}
+              <MeetingFields draft={draft} onChange={setDraft} idPrefix="meeting" />
+              <p className="text-xs text-muted-foreground">
+                {t("zoom.autoLink", { email: zoom?.email ?? "Zoom" })}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button onClick={onSubmit} disabled={schedule.isPending}>
+                {schedule.isPending ? t("coach.meetings.submitting") : t("coach.meetings.submit")}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
