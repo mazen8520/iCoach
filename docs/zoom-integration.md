@@ -9,18 +9,33 @@ Editing or cancelling the meeting in iCoach updates or deletes it in Zoom. Free 
 ## 1. Zoom app setup (Zoom App Marketplace)
 
 1. **Develop → Build App → General App**, managed by **User**. Name: iCoach.
-2. **Basic Information → OAuth Information.** The Development and Production sections are
-   separate, each with its own Client ID/Secret. Use the section whose Client ID is in your env:
+2. **Development vs Production** (the switch at the top of every app page). Each side has its own
+   Client ID/Secret, redirect URLs and event subscriptions. Keep them paired:
+   - **Development** credentials only work for users on your own Zoom account, but need no
+     review. Use them locally and for your first deployment.
+   - **Production** credentials are for other coaches' Zoom accounts. They need the Production
+     redirect/webhook set **and** the app published through Zoom's review (see
+     `zoom-marketplace-review-draft.md`).
+
+   Putting one side's Client ID in `.env` while its redirect URL is registered only on the other
+   side causes "Invalid redirect (4,700)".
+3. **Basic Information → OAuth Information** (on the side you use):
    - **OAuth Redirect URL**: the exact value of `ZOOM_REDIRECT_URI`.
    - **OAuth Allow List**: add the same URL.
    - Exact match: same scheme, host, port and path, **no trailing slash**.
+   - **It must be HTTPS.** Zoom answers `http://localhost:8080/...` with "Invalid redirect
+     (4,700)" even when it is registered (tested September 2026, including with Zoom's own
+     generated authorization URL).
 
    | Environment | Redirect URL |
    | --- | --- |
-   | Local | `http://localhost:8080/api/zoom/callback` |
+   | Local | An HTTPS tunnel to port 8080, e.g. `cloudflared tunnel --url http://localhost:8080` → `https://<random>.trycloudflare.com/api/zoom/callback`. Open iCoach through that same tunnel address, because the callback returns you to the site in `ZOOM_REDIRECT_URI`. |
    | Production | `https://<your-domain>/api/zoom/callback` |
 
-3. **Scopes**: only these.
+   Free quick-tunnel addresses change on every restart and can expire. Re-register the new
+   address in the Zoom app and `.env`, or use a tunnel with a fixed name.
+
+4. **Scopes**: only these. Check that `user:read:user` is there; without it, Connect fails at `GET /users/me`.
 
    | Scope | Why |
    | --- | --- |
@@ -30,14 +45,17 @@ Editing or cancelling the meeting in iCoach updates or deletes it in Zoom. Free 
    | `meeting:read:meeting` | Fetch a fresh host start link on demand |
    | `user:read:user` | Identify the connected Zoom user (id, email) |
 
-4. **Features → Access → Event Subscription**
-   - Endpoint URL: `https://<your-domain>/api/zoom/webhook`. It must be public HTTPS that is
-     reachable at that moment; `localhost` can't be used here.
-   - Events: **Meeting has been started**, **Meeting has been ended**, **Meeting has been
-     deleted**, **App deauthorized**.
-   - Click **Validate** (iCoach answers Zoom's challenge automatically), then **Save**.
-   - Copy the **Secret Token** into `ZOOM_WEBHOOK_SECRET_TOKEN`.
-5. Don't use Zoom's "Add app" / Local Test install button to connect. Coaches connect from
+5. **Features → Access**
+   - Turn on **Event Subscription** → **Add New Event Subscription** → Method **Webhook**.
+   - Endpoint URL: `https://<your-domain>/api/zoom/webhook` (locally, the tunnel address). It
+     must be public HTTPS and reachable when you save; otherwise Zoom says "Invalid URL".
+   - **Add Events** → Meeting: **Start Meeting**, **End Meeting**, **Meeting has been deleted**.
+   - **Save**: Zoom validates the URL on save, and iCoach answers the challenge automatically.
+   - The **Secret Token** at the top of the page goes in `ZOOM_WEBHOOK_SECRET_TOKEN`. It is shared
+     by Development and Production.
+   - There is no "App deauthorized" event to select. Zoom sends `app_deauthorized` on its own,
+     and only once the app is published; iCoach already handles it.
+6. Don't use Zoom's "Add app" / Local Test install button to connect. Coaches connect from
    **iCoach → Settings → Integrations → Connect Zoom**. An install that starts on Zoom's side carries
    no `state`, so iCoach can't know which coach it belongs to. It shows "click Connect Zoom"
    instead of accepting it, because accepting it would allow OAuth CSRF.
@@ -48,7 +66,7 @@ Editing or cancelling the meeting in iCoach updates or deletes it in Zoom. Free 
 | --- | --- |
 | `ZOOM_CLIENT_ID` | App Credentials → Client ID |
 | `ZOOM_CLIENT_SECRET` | App Credentials → Client Secret |
-| `ZOOM_REDIRECT_URI` | `http://localhost:8080/api/zoom/callback` locally, `https://<your-domain>/api/zoom/callback` in production |
+| `ZOOM_REDIRECT_URI` | `https://<tunnel>/api/zoom/callback` locally, `https://<your-domain>/api/zoom/callback` in production |
 | `ZOOM_WEBHOOK_SECRET_TOKEN` | Event Subscription → Secret Token |
 | `ZOOM_TOKEN_ENCRYPTION_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
 
@@ -68,7 +86,8 @@ connection is dropped automatically, nothing breaks permanently).
 - In Project → Settings → Environment Variables, add the variables from `.env.example` except
   `SUPABASE_DB_URL`, with `ZOOM_REDIRECT_URI` set to your production URL. The `VITE_*` ones are
   baked in at build time, so redeploy after changing them.
-- Register the production redirect URL and webhook URL in the Zoom app (section 1).
+- Register the production redirect URL and webhook URL in the Zoom app (section 1), on the
+  same Development/Production side as the credentials you put in Vercel.
 - **Preview deployments** get a different URL on every deploy. Zoom only redirects to registered
   URLs, so Connect Zoom works only on the domain in `ZOOM_REDIRECT_URI`.
 - **Custom domain later:** change `ZOOM_REDIRECT_URI`, add the new redirect URL to the Zoom app,
