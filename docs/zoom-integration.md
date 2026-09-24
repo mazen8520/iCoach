@@ -80,6 +80,12 @@ connection is dropped automatically, nothing breaks permanently).
 
 ## 3. Deploying on Vercel
 
+**Current setup:** Vercel project `icoach` (production `https://icoach-lime.vercel.app`). Its
+Production environment has all five `ZOOM_*` variables, using the Zoom app's **Development**
+credentials. The Zoom app's Development side has redirect URL and allow list set to only
+`https://icoach-lime.vercel.app/api/zoom/callback`, strict redirect matching on, and the
+"iCoach meetings" webhook pointed at `https://icoach-lime.vercel.app/api/zoom/webhook`.
+
 - `vercel.json` already builds with `NITRO_PRESET=vercel`. The app and `/api/zoom/*` run in one
   Node.js serverless function, and no rewrites or CORS settings are needed: the browser only calls
   its own origin, and Zoom calls the webhook server-to-server.
