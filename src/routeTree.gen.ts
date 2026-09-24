@@ -36,6 +36,8 @@ import { Route as CoachScheduleRouteImport } from './routes/coach.schedule'
 import { Route as CoachSettingsRouteImport } from './routes/coach.settings'
 import { Route as CoachVideosRouteImport } from './routes/coach.videos'
 import { Route as CoachWorkoutsRouteImport } from './routes/coach.workouts'
+import { Route as ApiZoomCallbackRouteImport } from './routes/api.zoom.callback'
+import { Route as ApiZoomWebhookRouteImport } from './routes/api.zoom.webhook'
 import { Route as CoachClientsIdRouteImport } from './routes/coach.clients_.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -173,6 +175,16 @@ const CoachWorkoutsRoute = CoachWorkoutsRouteImport.update({
   path: '/coach/workouts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiZoomCallbackRoute = ApiZoomCallbackRouteImport.update({
+  id: '/api/zoom/callback',
+  path: '/api/zoom/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiZoomWebhookRoute = ApiZoomWebhookRouteImport.update({
+  id: '/api/zoom/webhook',
+  path: '/api/zoom/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CoachClientsIdRoute = CoachClientsIdRouteImport.update({
   id: '/coach/clients_/$id',
   path: '/coach/clients/$id',
@@ -207,6 +219,8 @@ export interface FileRoutesByFullPath {
   '/coach/settings': typeof CoachSettingsRoute
   '/coach/videos': typeof CoachVideosRoute
   '/coach/workouts': typeof CoachWorkoutsRoute
+  '/api/zoom/callback': typeof ApiZoomCallbackRoute
+  '/api/zoom/webhook': typeof ApiZoomWebhookRoute
   '/coach/clients/$id': typeof CoachClientsIdRoute
 }
 export interface FileRoutesByTo {
@@ -237,6 +251,8 @@ export interface FileRoutesByTo {
   '/coach/settings': typeof CoachSettingsRoute
   '/coach/videos': typeof CoachVideosRoute
   '/coach/workouts': typeof CoachWorkoutsRoute
+  '/api/zoom/callback': typeof ApiZoomCallbackRoute
+  '/api/zoom/webhook': typeof ApiZoomWebhookRoute
   '/coach/clients/$id': typeof CoachClientsIdRoute
 }
 export interface FileRoutesById {
@@ -268,6 +284,8 @@ export interface FileRoutesById {
   '/coach/settings': typeof CoachSettingsRoute
   '/coach/videos': typeof CoachVideosRoute
   '/coach/workouts': typeof CoachWorkoutsRoute
+  '/api/zoom/callback': typeof ApiZoomCallbackRoute
+  '/api/zoom/webhook': typeof ApiZoomWebhookRoute
   '/coach/clients_/$id': typeof CoachClientsIdRoute
 }
 export interface FileRouteTypes {
@@ -300,6 +318,8 @@ export interface FileRouteTypes {
     | '/coach/settings'
     | '/coach/videos'
     | '/coach/workouts'
+    | '/api/zoom/callback'
+    | '/api/zoom/webhook'
     | '/coach/clients/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -330,6 +350,8 @@ export interface FileRouteTypes {
     | '/coach/settings'
     | '/coach/videos'
     | '/coach/workouts'
+    | '/api/zoom/callback'
+    | '/api/zoom/webhook'
     | '/coach/clients/$id'
   id:
     | '__root__'
@@ -360,6 +382,8 @@ export interface FileRouteTypes {
     | '/coach/settings'
     | '/coach/videos'
     | '/coach/workouts'
+    | '/api/zoom/callback'
+    | '/api/zoom/webhook'
     | '/coach/clients_/$id'
   fileRoutesById: FileRoutesById
 }
@@ -391,6 +415,8 @@ export interface RootRouteChildren {
   CoachSettingsRoute: typeof CoachSettingsRoute
   CoachVideosRoute: typeof CoachVideosRoute
   CoachWorkoutsRoute: typeof CoachWorkoutsRoute
+  ApiZoomCallbackRoute: typeof ApiZoomCallbackRoute
+  ApiZoomWebhookRoute: typeof ApiZoomWebhookRoute
   CoachClientsIdRoute: typeof CoachClientsIdRoute
 }
 
@@ -585,6 +611,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CoachWorkoutsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/zoom/callback': {
+      id: '/api/zoom/callback'
+      path: '/api/zoom/callback'
+      fullPath: '/api/zoom/callback'
+      preLoaderRoute: typeof ApiZoomCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/zoom/webhook': {
+      id: '/api/zoom/webhook'
+      path: '/api/zoom/webhook'
+      fullPath: '/api/zoom/webhook'
+      preLoaderRoute: typeof ApiZoomWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/coach/clients_/$id': {
       id: '/coach/clients_/$id'
       path: '/coach/clients/$id'
@@ -623,6 +663,8 @@ const rootRouteChildren: RootRouteChildren = {
   CoachSettingsRoute: CoachSettingsRoute,
   CoachVideosRoute: CoachVideosRoute,
   CoachWorkoutsRoute: CoachWorkoutsRoute,
+  ApiZoomCallbackRoute: ApiZoomCallbackRoute,
+  ApiZoomWebhookRoute: ApiZoomWebhookRoute,
   CoachClientsIdRoute: CoachClientsIdRoute,
 }
 export const routeTree = rootRouteImport

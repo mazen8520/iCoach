@@ -246,7 +246,12 @@ export interface MeetingRow {
   scheduled_at: string;
   duration_minutes: number;
   status: MeetingStatus;
+  /** Join link (for Zoom-created meetings, Zoom's join_url). */
   video_url: string | null;
+  zoom_meeting_id: string | null;
+  zoom_passcode: string | null;
+  zoom_started_at: string | null;
+  zoom_ended_at: string | null;
   created_at: string;
 }
 
