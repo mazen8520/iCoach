@@ -48,6 +48,7 @@ order:
 | `0008_sync_role_from_app_metadata.sql` | Applies `app_metadata.role` to `profiles.role` when Supabase Auth writes it (it lands in an UPDATE after the insert) |
 | `0009_fix_assignment_policy_recursion.sql` | `is_workout_owner()` helper so the assignment write policy doesn't recurse through `workouts` RLS |
 | `0010_function_privileges.sql` | Revokes RPC access to trigger-only functions, pins `set_updated_at` search_path |
+| `0011_zoom_integration.sql` | Zoom: `zoom_connections` + `zoom_oauth_states` (server-only, RLS with no policies), Zoom columns on `meetings` |
 
 **Tables**
 
@@ -71,7 +72,9 @@ order:
 | `check_ins` | Weekly check-in submissions (weight, energy, sleep, mood, feedback) + coach's review/feedback. |
 | `check_in_photos` | Storage references for photos attached to a check-in. |
 | `conversations` / `messages` | One conversation per coach↔client pair; messages have `read_at` for read receipts. |
-| `meetings` | Scheduled 1:1 meetings. `video_url` holds the **Zoom meeting link** (only `http(s)` URLs are accepted, enforced by a check constraint). |
+| `meetings` | Scheduled 1:1 meetings. Created through the Zoom integration: `video_url` holds Zoom's join link (only `http(s)` URLs are accepted, enforced by a check constraint), plus `zoom_meeting_id`, `zoom_passcode`, and `zoom_started_at`/`zoom_ended_at` (set by webhooks). The host start link is never stored. See [docs/zoom-integration.md](docs/zoom-integration.md). |
+| `zoom_connections` | One row per coach who connected Zoom: Zoom user id/email and the OAuth tokens, **AES-256-GCM encrypted** by the server. RLS on with no policies and no grants to `anon`/`authenticated`: only server code (service role) can touch it. |
+| `zoom_oauth_states` | Short-lived, single-use OAuth `state` + PKCE verifier for a coach's Connect Zoom attempt. Server-only like `zoom_connections`. |
 | `schedule_events` | Custom coach calendar entries ("New event" on the Schedule page): title, `event_type`, `starts_at`/`ends_at`, description, optional `client_id`. Client-specific events also appear on that athlete's calendar. |
 | `notifications` | In-app notification feed, populated by triggers (see below). `metadata` (jsonb) carries names/titles so the UI can render each notification in the viewer's language; `title` is the English fallback. |
 
@@ -292,7 +295,8 @@ All server state goes through TanStack Query via hooks in `src/hooks/`:
 | `use-progress.ts` | Weight entries, personal records, 30-day completion stats |
 | `use-check-ins.ts` | Submit/review check-ins, check-in photo upload |
 | `use-messages.ts` | Conversations, messages, realtime subscriptions, read receipts |
-| `use-meetings.ts` | Scheduling (with Zoom link), listing and updating meetings |
+| `use-meetings.ts` | Listing meetings; schedule / edit / cancel / start go through the Zoom server functions (`src/lib/zoom.functions.ts`) |
+| `use-zoom.ts` | Coach's Zoom connection: status, Connect (redirects to Zoom), Disconnect |
 | `use-schedule.ts` | Coach calendar for any day/week/month range (assignments + meetings + custom events merged), event create/delete, athletes' own events |
 | `use-settings.ts` | Profile updates, notification preferences, avatar upload |
 | `use-notifications.ts` | Notification feed + realtime + mark-read |
@@ -485,8 +489,9 @@ workout is scheduled today, rest otherwise), then an every-day plan, then the ne
 - **Storage security**: see §2.5 — private buckets restrict reads to the owning client and their
   linked coach; public buckets (`avatars`, `media`) only restrict **writes** to the owner's folder.
 - **No service-role key in the browser.** The secret key is read via `process.env` only inside
-  the two server functions (`create-athlete.functions.ts`, `password.functions.ts`) and admin
-  scripts; the production client bundle was checked to contain neither the key nor its name.
+  server code (`create-athlete.functions.ts`, `password.functions.ts`, `zoom.functions.ts`,
+  `src/lib/server/**`, the `/api/zoom/*` routes) and admin scripts; the production client bundle
+  was checked to contain neither the key nor its name, nor any Zoom secret.
 - **Server functions re-verify everything**: a replay of a real "add athlete" request with an
   athlete's token is rejected (`NOT_COACH`), and a forged token is rejected (`SESSION_EXPIRED`).
 
@@ -501,7 +506,13 @@ workout is scheduled today, rest otherwise), then an every-day plan, then the ne
 | `VITE_SUPABASE_URL` | `.env`, build-time (public) | Your Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | `.env`, build-time (public) | Anon/publishable API key |
 | `SUPABASE_SECRET_KEY` | `.env` locally; a real server-only env var on whatever host runs the app in production | Used by local admin scripts (`scripts/apply-migrations.mjs`) **and** by the `createAthleteAccount` server function (`src/lib/create-athlete.functions.ts`) that powers Coach → Add Client. Read only via `process.env` inside a `createServerFn` handler — never imported by anything in the client bundle, and never has the `VITE_` prefix. Must be set as an environment variable on your deployment platform (Vercel/Netlify/etc.) or "Add Client" will fail in production even though everything else works. |
-| `SUPABASE_DB_URL` | `.env`, never bundled | Postgres connection string, for running migrations locally |
+| `SUPABASE_DB_URL` | `.env`, never bundled | Postgres connection string, for running migrations locally (not needed on the host) |
+| `ZOOM_CLIENT_ID` / `ZOOM_CLIENT_SECRET` | server-only | Zoom app credentials |
+| `ZOOM_REDIRECT_URI` | server-only | `https://<your-domain>/api/zoom/callback` in production; must exactly match the Zoom app |
+| `ZOOM_WEBHOOK_SECRET_TOKEN` | server-only | Verifies Zoom webhook signatures |
+| `ZOOM_TOKEN_ENCRYPTION_KEY` | server-only | 32 random bytes (base64) encrypting stored Zoom tokens |
+
+Zoom setup and the production checklist: [docs/zoom-integration.md](docs/zoom-integration.md).
 
 Copy `.env.example` to `.env` and fill in the values from your Supabase dashboard
 (**Settings → API** for the first two, **Settings → Database** for the connection string).
@@ -513,10 +524,11 @@ npm install
 npm run dev
 ```
 
-### Building
+### Building and testing
 
 ```sh
 npm run build
+npm test   # unit tests (Zoom token refresh, API calls, webhook verification; Zoom is mocked)
 ```
 
 Outputs a Node server build to `.output/` (Nitro's default preset). Run it with
@@ -551,12 +563,15 @@ detection on either platform is unambiguous.
 contain): add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` as environment variables so
 the build can bake them in, and add `SUPABASE_SECRET_KEY` as a (server-only) environment variable
 so **Coach → Add Client** works in production — without it, everything else in the app works but
-that one feature will fail.
+that one feature will fail. For meetings, also add the five `ZOOM_*` variables (without them
+Settings → Integrations says Zoom isn't set up). In Supabase → Authentication → URL
+Configuration, set the Site URL to your domain and add `https://<your-domain>/reset-password` to
+the Redirect URLs, or password-reset emails will point at the wrong site.
 
 ### Supabase configuration required for production
 
 1. Create a Supabase project.
-2. Run the SQL files in `supabase/migrations/` **in order** (0001 → 0010) via the SQL editor, the
+2. Run the SQL files in `supabase/migrations/` **in order** (0001 → 0011) via the SQL editor, the
    CLI (`supabase db push`), the Management API, or `node scripts/apply-migrations.mjs` (requires
    `npm install --no-save pg` and `SUPABASE_DB_URL` set to a connection string reachable from
    wherever you run it — note the direct `db.<ref>.supabase.co` host is IPv6-only; use the
@@ -582,6 +597,9 @@ that one feature will fail.
 | "Add client" errors "This client already has a coach" | `coach_clients.client_id` is `unique` by design — a client can only be linked to one coach at a time. |
 | Realtime messages/notifications don't update live | Confirm `messages`/`notifications` are still in the `supabase_realtime` publication (migration `0004`) and that the browser client's websocket isn't blocked by a proxy/firewall. |
 | Storage upload fails with a policy error | Check the upload path matches the `{owner_user_id}/...` convention the bucket's policies expect (see §2.5). |
+| Zoom shows "Invalid redirect … (4,700)" after Connect Zoom | `ZOOM_REDIRECT_URI` isn't registered in the Zoom app. Add the exact same URL (no trailing slash) to **OAuth Redirect URL** and **OAuth Allow List** in the same environment (Development/Production) as the Client ID you use. |
+| Zoom says "Invalid URL" for the webhook endpoint | Zoom must be able to reach it over public HTTPS at that moment (localhost never works; temporary tunnels expire). |
+| Settings → Integrations says Zoom isn't set up | One of the five `ZOOM_*` variables is missing on the server. |
 | `getaddrinfo ENOTFOUND db.<ref>.supabase.co` when running `scripts/apply-migrations.mjs` | That hostname is IPv6-only on many networks/hosts. Use the Connection Pooling (Supavisor) string instead — Settings → Database → Connection Pooling → Session mode. |
 | Deleting a coach account fails with a foreign key error on `exercises`/`workout_exercises` | Make sure migration `0005_fix_exercise_fk.sql` has been applied — earlier schema versions had `workout_exercises.exercise_id` as `on delete restrict`, which can deadlock against the cascade from deleting the owning `auth.users` row. |
 | TypeScript errors on Supabase query results after changing the schema | `src/lib/database.types.ts` is hand-written, not generated — update the matching interface there (and any `.select()`/`.returns<>()` typed shape in `src/hooks/`) to match your migration. |
