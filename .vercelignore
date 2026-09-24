@@ -1,0 +1,10 @@
+# Keep local secrets and build output out of `vercel deploy` uploads (Vercel builds remotely).
+.env
+.env.*
+!.env.example
+node_modules
+.output
+.vercel
+.tanstack
+.nitro
+dist
