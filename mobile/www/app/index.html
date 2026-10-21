@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  iOS refuses to start unless the start path (capacitor.config.ts server.appStartPath = /app)
+  exists inside the app bundle, even though the live site is what loads. This file satisfies that
+  check; it is never shown in a normal build.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="refresh" content="0; url=https://i-coach.vercel.app/app" />
+    <title>iCoach</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: #1b1b1e;
+      }
+    </style>
+  </head>
+  <body></body>
+</html>

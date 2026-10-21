@@ -8,3 +8,8 @@ node_modules
 .tanstack
 .nitro
 dist
+# Native mobile projects and their sources: built by .github/workflows/mobile-apps.yml, not Vercel.
+android
+ios
+mobile
+assets

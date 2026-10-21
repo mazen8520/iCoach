@@ -1,0 +1,137 @@
+name: Mobile apps
+
+# Builds the Android APK and an unsigned iOS IPA for hands-on testing, then publishes both to a
+# GitHub pre-release. The apps load the live site (capacitor.config.ts), so web changes reach
+# them through the normal Vercel deploy; rebuild only after changing the native side.
+# Installing the builds on a phone: docs/mobile-apps.md.
+
+on:
+  push:
+    branches: [main, mobile-apps]
+    paths:
+      - "android/**"
+      - "ios/**"
+      - "mobile/**"
+      - "assets/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/mobile-apps.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERSION_NAME: "1.0.${{ github.run_number }}"
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Sync Capacitor
+        run: bunx cap sync android
+      - name: Build release APK
+        working-directory: android
+        env:
+          ICOACH_VERSION_CODE: ${{ github.run_number }}
+          ICOACH_VERSION_NAME: ${{ env.VERSION_NAME }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+      - run: cp android/app/build/outputs/apk/release/app-release.apk iCoach-android.apk
+      - uses: actions/upload-artifact@v7
+        with:
+          name: iCoach-android
+          path: iCoach-android.apk
+          if-no-files-found: error
+
+  ios:
+    name: iOS IPA (unsigned)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Sync Capacitor
+        run: bunx cap sync ios
+      - name: Build unsigned IPA
+        run: |
+          xcodebuild -version
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            MARKETING_VERSION="$VERSION_NAME" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+          mkdir -p Payload
+          cp -R "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" Payload/
+          zip -qry iCoach-ios-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v7
+        with:
+          name: iCoach-ios
+          path: iCoach-ios-unsigned.ipa
+          if-no-files-found: error
+
+  release:
+    name: Publish test build
+    needs: [android, ios]
+    # Ship the APK even if the iOS build failed, so Android testing is never blocked.
+    if: ${{ !cancelled() && needs.android.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IOS_RESULT: ${{ needs.ios.result }}
+        run: |
+          cat > notes.md <<'EOF'
+          Test build of the iCoach mobile apps. It runs the same live app and database as
+          https://i-coach.vercel.app, so everything you change on one device shows up on the others.
+
+          **Android:** download `iCoach-android.apk` on the phone, open it and allow installing from
+          this source when asked. Later builds install over this one.
+
+          **iPhone:** `iCoach-ios-unsigned.ipa` must be signed with your Apple ID when you install it.
+          Use Sideloadly (Windows or Mac) with the iPhone plugged in, then turn on Developer Mode on the
+          iPhone. Free Apple IDs need a re-install every 7 days. Step by step: docs/mobile-apps.md.
+          EOF
+          if [ "$IOS_RESULT" != "success" ]; then
+            printf '\n> The iOS build failed for this run, so only the Android APK is attached.\n' >> notes.md
+          fi
+          gh release create "mobile-test-$VERSION_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "iCoach mobile test build $VERSION_NAME" \
+            --notes-file notes.md

@@ -1,0 +1,4 @@
+# Unix line endings for the Gradle wrapper script (it runs on Linux and macOS CI).
+gradlew text eol=lf
+*.keystore binary
+*.jks binary

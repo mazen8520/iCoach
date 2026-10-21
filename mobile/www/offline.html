@@ -1,0 +1,188 @@
+<!doctype html>
+<!--
+  Shown by the iOS/Android app when iCoach can't be reached (capacitor.config.ts server.errorPath).
+  It ships inside the app, so it works with no network: no external fonts, scripts or images.
+  It reconnects on its own as soon as the network is back.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
+    />
+    <meta name="color-scheme" content="dark" />
+    <title>iCoach</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #1b1b1e;
+        --card: #27272b;
+        --border: #3c3c42;
+        --fg: #f4f1ed;
+        --muted: #a9aab2;
+        --red: #f40d1f;
+        /* A touch deeper than the brand red so white label text meets WCAG AA (4.9:1). */
+        --red-button: #e00b1c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Noto Sans Arabic",
+          sans-serif;
+      }
+      main {
+        width: min(100%, 360px);
+        text-align: center;
+      }
+      .mark {
+        display: inline-grid;
+        width: 64px;
+        height: 64px;
+        place-items: center;
+        margin-bottom: 26px;
+        background: var(--red);
+        box-shadow: 0 14px 32px rgb(0 0 0 / 0.45);
+        transform: skew(-8deg);
+      }
+      .mark svg {
+        width: 32px;
+        height: 32px;
+        fill: none;
+        stroke: #fff;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 2.6;
+        transform: skew(8deg);
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.6rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+      }
+      [lang="ar"] h1 {
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      p {
+        margin: 12px 0 28px;
+        color: var(--muted);
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 15px 18px;
+        background: var(--red-button);
+        color: #fff;
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      [lang="ar"] button {
+        letter-spacing: 0;
+        font-size: 0.95rem;
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      .status {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path
+            d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"
+          />
+        </svg>
+      </span>
+      <h1 id="title">You're offline</h1>
+      <p id="body">iCoach needs a connection to load your plan. It reconnects on its own.</p>
+      <button id="retry" type="button">Try again</button>
+      <p class="status" id="status" role="status" aria-live="polite">Waiting for the network…</p>
+    </main>
+    <script>
+      // Mirrors capacitor.config.ts (server.url + server.appStartPath).
+      var APP_URL = "https://i-coach.vercel.app/app";
+      var copy = {
+        ar: {
+          title: "لا يوجد اتصال",
+          body: "يحتاج iCoach إلى اتصال بالإنترنت لتحميل خطتك. سيعود الاتصال تلقائيًا.",
+          retry: "حاول مجددًا",
+          waiting: "بانتظار الشبكة…",
+          checking: "جارٍ التحقق من الاتصال…",
+        },
+        en: {
+          title: "You're offline",
+          body: "iCoach needs a connection to load your plan. It reconnects on its own.",
+          retry: "Try again",
+          waiting: "Waiting for the network…",
+          checking: "Checking the connection…",
+        },
+      };
+      var lang = /^ar\b/i.test(navigator.language || "") ? "ar" : "en";
+      var t = copy[lang];
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+      document.getElementById("title").textContent = t.title;
+      document.getElementById("body").textContent = t.body;
+      document.getElementById("retry").textContent = t.retry;
+      var status = document.getElementById("status");
+      status.textContent = t.waiting;
+
+      try {
+        var plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+        if (plugins.SplashScreen) plugins.SplashScreen.hide();
+      } catch (e) {}
+
+      var checking = false;
+      function reconnect() {
+        if (checking) return;
+        checking = true;
+        status.textContent = t.checking;
+        // An opaque response is enough: it proves iCoach is reachable again.
+        fetch(APP_URL, { mode: "no-cors", cache: "no-store" })
+          .then(function () {
+            window.location.replace(APP_URL);
+          })
+          .catch(function () {
+            checking = false;
+            status.textContent = t.waiting;
+          });
+      }
+      document.getElementById("retry").addEventListener("click", reconnect);
+      window.addEventListener("online", reconnect);
+      setInterval(reconnect, 5000);
+      setTimeout(reconnect, 600);
+    </script>
+  </body>
+</html>

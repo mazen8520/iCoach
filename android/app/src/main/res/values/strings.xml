@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">iCoach</string>
+    <string name="title_activity_main">iCoach</string>
+    <string name="package_name">com.icoach.performance</string>
+    <string name="custom_url_scheme">com.icoach.performance</string>
+</resources>
