@@ -13,3 +13,6 @@ android
 ios
 mobile
 assets
+# Local tool settings
+.claude
+.impeccable

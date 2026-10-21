@@ -17,6 +17,7 @@ on:
       - "package.json"
       - "bun.lock"
       - ".github/workflows/mobile-apps.yml"
+      - ".github/scripts/**"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +33,8 @@ env:
 jobs:
   android:
     name: Android APK
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to Ubuntu 26 in October 2026.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -45,6 +47,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
+      - uses: android-actions/setup-android@v4
       - name: Sync Capacitor
         run: bunx cap sync android
       - name: Build release APK
@@ -54,7 +57,12 @@ jobs:
           ICOACH_VERSION_NAME: ${{ env.VERSION_NAME }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          set -o pipefail
+          ./gradlew --no-daemon assembleRelease 2>&1 | tee "$RUNNER_TEMP/gradle.log" || {
+            bash ../.github/scripts/annotate-failure.sh "$RUNNER_TEMP/gradle.log" \
+              "Gradle build failed" "What went wrong|error:|^e: |FAILED"
+            exit 1
+          }
       - run: cp android/app/build/outputs/apk/release/app-release.apk iCoach-android.apk
       - uses: actions/upload-artifact@v7
         with:
@@ -76,6 +84,7 @@ jobs:
         run: bunx cap sync ios
       - name: Build unsigned IPA
         run: |
+          set -o pipefail
           xcodebuild -version
           xcodebuild \
             -project ios/App/App.xcodeproj \
@@ -89,7 +98,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            archive
+            archive 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" || {
+            bash .github/scripts/annotate-failure.sh "$RUNNER_TEMP/xcodebuild.log" \
+              "Xcode build failed" "error:|BUILD FAILED|ARCHIVE FAILED"
+            exit 1
+          }
           mkdir -p Payload
           cp -R "$RUNNER_TEMP/App.xcarchive/Products/Applications/App.app" Payload/
           zip -qry iCoach-ios-unsigned.ipa Payload
@@ -104,7 +117,7 @@ jobs:
     needs: [android, ios]
     # Ship the APK even if the iOS build failed, so Android testing is never blocked.
     if: ${{ !cancelled() && needs.android.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v8
         with:
