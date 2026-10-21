@@ -1989,60 +1989,127 @@ blockquote {
   height: 1px;
   background: var(--primary);
 }
+/* ===== Sign in, sign up and password pages (src/components/icoach/auth-layout.tsx) =====
+   One centred card on every screen size and in the iOS/Android apps, over a slowly drifting
+   athletic photograph; the brand's heartbeat runs along the card's top edge. */
 .auth-shell {
   position: relative;
-  min-height: 100svh;
-  overflow-x: clip;
-  background: var(--background);
+  isolation: isolate;
   display: flex;
+  min-height: 100svh;
   align-items: center;
-  justify-content: flex-end;
-}
-.auth-shell-center {
   justify-content: center;
+  overflow: hidden;
+  background: var(--background);
 }
-.auth-shell-center .auth-wrap {
-  padding: 6rem clamp(1.5rem, 4vw, 3rem) 3rem;
+.auth-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
 }
-.auth-shell-image,
-.auth-shell-shade {
+.auth-photo {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 64% 38%;
 }
-.auth-shell-shade {
+.auth-shell[data-scene="athlete"] .auth-photo {
+  object-position: 72% 34%;
+}
+.auth-shell[data-scene="coach"] .auth-photo {
+  object-position: 74% 40%;
+}
+.auth-shell[data-scene="recover"] .auth-photo {
+  object-position: 48% 34%;
+}
+/* Darkest at the edges and behind the card, so the athlete stays visible around it. */
+.auth-shade {
+  position: absolute;
+  inset: 0;
   background:
+    radial-gradient(60% 55% at 50% 52%, oklch(0.1 0.006 286 / 0.72), transparent 100%),
+    radial-gradient(120% 90% at 50% 50%, transparent 40%, oklch(0.07 0.006 286 / 0.9) 100%),
     linear-gradient(
-      90deg,
-      oklch(0.055 0 0/0.98) 0%,
-      oklch(0.055 0 0/0.86) 35%,
-      oklch(0.055 0 0/0.12) 73%
-    ),
-    linear-gradient(0deg, oklch(0.055 0 0/0.7), transparent 55%);
+      180deg,
+      oklch(0.07 0 0 / 0.7),
+      transparent 26%,
+      transparent 70%,
+      oklch(0.07 0 0 / 0.85)
+    );
 }
 .auth-wrap {
   position: relative;
   z-index: 1;
   display: flex;
   width: 100%;
-  max-width: 480px;
+  max-width: 29.5rem;
   justify-content: center;
-  padding-block: 6rem 3rem;
-  padding-inline: clamp(1.5rem, 4vw, 3rem) 1.5rem;
+  padding: calc(84px + 1.25rem + var(--safe-top)) max(1.25rem, var(--safe-right))
+    calc(2rem + var(--safe-bottom)) max(1.25rem, var(--safe-left));
 }
 .auth-card {
+  position: relative;
   width: 100%;
-  padding: clamp(1.75rem, 3vw, 2.5rem);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 30px 80px oklch(0 0 0 / 0.6);
+  padding: calc(clamp(1.5rem, 5vw, 2.4rem) + 1.4rem) clamp(1.4rem, 5vw, 2.4rem)
+    clamp(1.5rem, 5vw, 2.2rem);
+}
+.auth-card .eyebrow {
+  color: var(--primary);
+}
+/* The heartbeat: a faint red track along the top edge with a beat travelling across it. */
+.auth-pulse {
+  position: absolute;
+  top: 0.6rem;
+  left: 0;
+  width: 100%;
+  height: 1.9rem;
+  overflow: visible;
+}
+/* The beat travels in the reading direction. */
+[dir="rtl"] .auth-pulse {
+  transform: scaleX(-1);
+}
+.auth-pulse path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.auth-pulse-track {
+  stroke: color-mix(in oklab, var(--primary) 55%, var(--border));
+  stroke-width: 1.5;
+}
+.auth-pulse-beat {
+  stroke: oklch(0.72 0.2 27);
+  stroke-width: 3;
+  opacity: 0;
+  filter: drop-shadow(0 0 4px oklch(0.61 0.245 27 / 0.8));
 }
 .auth-title {
-  margin: 0.6rem 0 0;
+  margin: 0.55rem 0 0;
   font-family: var(--font-display);
-  font-size: clamp(1.8rem, 3vw, 2.25rem);
+  font-size: clamp(2rem, 7.5vw, 2.65rem);
   font-weight: 800;
-  line-height: 1;
+  line-height: 0.94;
   text-transform: uppercase;
+  text-wrap: balance;
+}
+.auth-subtitle {
+  margin-top: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.auth-body {
+  margin-top: 1.6rem;
 }
 .auth-field {
   display: flex;
@@ -2050,11 +2117,25 @@ blockquote {
   gap: 0.4rem;
   margin-top: 1.1rem;
 }
+.auth-field:first-child {
+  margin-top: 0;
+}
 .auth-field label {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--muted-foreground);
+}
+.auth-field input {
+  height: 3rem;
+  border-color: var(--border);
+  background: color-mix(in oklab, var(--background) 70%, var(--card));
+  padding-inline: 0.9rem;
+  font-size: 1rem;
+}
+.auth-field input:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-fade);
 }
 .auth-error {
   margin-top: 1rem;
@@ -2064,24 +2145,168 @@ blockquote {
   font-size: 0.8rem;
   color: oklch(0.85 0.1 25);
 }
+.auth-body form > button[type="submit"],
+.auth-body > button {
+  height: 3.25rem;
+}
+.auth-body form > button[type="submit"] {
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.1em;
+}
+/* A light sweep crosses the main button on hover. */
+.auth-body form > button[type="submit"]::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, oklch(1 0 0 / 0.26) 50%, transparent 65%);
+  content: "";
+  transform: translateX(-120%);
+}
 .auth-footer {
-  margin-top: 1.75rem;
+  margin-top: 1.6rem;
   border-top: 1px solid var(--border);
-  padding-top: 1.25rem;
+  padding-top: 1.2rem;
   text-align: center;
   font-size: 0.82rem;
+  line-height: 1.6;
   color: var(--muted-foreground);
 }
 .auth-footer a {
   color: var(--primary);
   font-weight: 700;
 }
-@media (max-width: 860px) {
-  .auth-shell {
-    justify-content: center;
+@media (prefers-reduced-motion: no-preference) {
+  .auth-photo {
+    animation: auth-drift 24s ease-in-out infinite alternate;
+  }
+  .auth-card {
+    animation: auth-card-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .auth-rise {
+    animation: auth-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: calc(0.15s + var(--rise, 0) * 70ms);
+  }
+  .auth-pulse-beat {
+    opacity: 1;
+    stroke-dasharray: 18 100;
+    animation: auth-beat 2.8s cubic-bezier(0.45, 0.05, 0.3, 1) 0.5s infinite;
+  }
+  @media (hover: hover) {
+    .auth-body form > button[type="submit"]:hover::after {
+      transform: translateX(120%);
+      transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .auth-body form > button[type="submit"]:hover svg {
+      transform: translateX(3px);
+    }
+    [dir="rtl"] .auth-body form > button[type="submit"]:hover svg {
+      transform: translateX(-3px);
+    }
+  }
+}
+@keyframes auth-drift {
+  from {
+    transform: scale(1.14) translate3d(-1.6%, -1%, 0);
+  }
+  to {
+    transform: scale(1.03) translate3d(1.6%, 1%, 0);
+  }
+}
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+}
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes auth-beat {
+  from {
+    stroke-dashoffset: 18;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@media (max-width: 480px) {
+  .auth-wrap {
+    padding-left: max(1rem, var(--safe-left));
+    padding-right: max(1rem, var(--safe-right));
+  }
+}
+/* Short screens (small phones, landscape, laptops with toolbars): keep every form in view. */
+@media (max-height: 760px) {
+  .auth-shell .landing-nav {
+    height: calc(68px + var(--safe-top));
   }
   .auth-wrap {
-    padding: 6.5rem 1.25rem 2.5rem;
+    padding-top: calc(68px + 0.5rem + var(--safe-top));
+    padding-bottom: calc(1rem + var(--safe-bottom));
+  }
+  .auth-card {
+    padding-top: calc(1.25rem + 1.3rem);
+    padding-bottom: 1.25rem;
+  }
+  .auth-title {
+    font-size: clamp(1.75rem, 6.5vw, 2.2rem);
+  }
+  .auth-subtitle {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+  }
+  .auth-body {
+    margin-top: 1.1rem;
+  }
+  .auth-field {
+    margin-top: 0.8rem;
+  }
+  .auth-field input {
+    height: 2.75rem;
+  }
+  .auth-body form > button[type="submit"],
+  .auth-body > button {
+    height: 3rem;
+  }
+  .auth-body form > button[type="submit"] {
+    margin-top: 1.1rem;
+  }
+  .auth-footer {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+  }
+}
+@media (max-height: 680px) {
+  .auth-wrap {
+    padding-top: calc(68px + 0.25rem + var(--safe-top));
+    padding-bottom: calc(0.75rem + var(--safe-bottom));
+  }
+  .auth-card {
+    padding-top: calc(1.1rem + 1.2rem);
+  }
+  .auth-subtitle {
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .auth-field {
+    margin-top: 0.7rem;
+  }
+  .auth-field input {
+    height: 2.6rem;
+  }
+  .auth-body {
+    margin-top: 1rem;
+  }
+  .auth-body form > button[type="submit"],
+  .auth-body > button {
+    height: 2.85rem;
+  }
+  .auth-footer {
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
   }
 }
 .activity-icon {
@@ -3365,8 +3590,7 @@ button.appointment:not(:disabled):hover {
     oklch(0.06 0 0/0.6)
   );
 }
-[dir="rtl"] .landing-shade,
-[dir="rtl"] .auth-shell-shade {
+[dir="rtl"] .landing-shade {
   background:
     linear-gradient(
       270deg,
@@ -5746,17 +5970,6 @@ html[lang="ar"] .day-panel-head h3 {
   padding-top: var(--safe-top);
   padding-left: max(clamp(1.2rem, 5vw, 5rem), var(--safe-left));
   padding-right: max(clamp(1.2rem, 5vw, 5rem), var(--safe-right));
-}
-.auth-wrap,
-.auth-shell-center .auth-wrap {
-  padding-top: calc(6rem + var(--safe-top));
-  padding-bottom: calc(3rem + var(--safe-bottom));
-}
-@media (max-width: 860px) {
-  .auth-wrap {
-    padding-top: calc(6.5rem + var(--safe-top));
-    padding-bottom: calc(2.5rem + var(--safe-bottom));
-  }
 }
 @media (max-width: 1023px) {
   .page-wrap {

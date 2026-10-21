@@ -44,7 +44,7 @@ function ForgotPassword() {
 
   return (
     <AuthLayout
-      align="center"
+      scene="recover"
       eyebrow={t("auth.forgot.eyebrow")}
       title={t("auth.forgot.title")}
       subtitle={t("auth.forgot.subtitle")}

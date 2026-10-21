@@ -78,7 +78,7 @@ function ResetPassword() {
 
   return (
     <AuthLayout
-      align="center"
+      scene="recover"
       eyebrow={t(mustChangePassword ? "auth.reset.forcedEyebrow" : "auth.reset.eyebrow")}
       title={t("auth.reset.title")}
       subtitle={t(mustChangePassword ? "auth.reset.forcedSubtitle" : "auth.reset.subtitle")}

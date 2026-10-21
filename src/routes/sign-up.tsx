@@ -70,6 +70,7 @@ function SignUp() {
 
   return (
     <AuthLayout
+      scene="coach"
       eyebrow={t("auth.signUp.eyebrow")}
       title={t("auth.signUp.title")}
       subtitle={t("auth.signUp.subtitle")}

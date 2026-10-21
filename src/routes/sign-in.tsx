@@ -44,6 +44,7 @@ function SignIn() {
   const [submitting, setSubmitting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
+  const scene = portal === "athlete" ? "athlete" : portal === "coach" ? "coach" : "neutral";
   const portalRole: UserRole | null =
     portal === "coach" ? "coach" : portal === "athlete" ? "client" : null;
 
@@ -107,7 +108,7 @@ function SignIn() {
       : "";
     return (
       <AuthLayout
-        align="center"
+        scene={scene}
         eyebrow={t("auth.signedIn.eyebrow")}
         title={t("auth.signedIn.title")}
         subtitle={
@@ -164,7 +165,7 @@ function SignIn() {
 
   return (
     <AuthLayout
-      align="center"
+      scene={scene}
       {...copy}
       footer={
         portal === "athlete" ? (
