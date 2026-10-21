@@ -51,12 +51,30 @@ import {
   useTodayAssignment,
 } from "@/hooks/use-workouts";
 import {
+  mealsForDay,
   planForDay,
   useMealLogs,
   useMyNutritionPlans,
   useToggleMealLog,
   type DayType,
+  type MealWithItems,
 } from "@/hooks/use-nutrition";
+import { useMyGoals } from "@/hooks/use-goals";
+import { Celebration, DumbbellLoader, HeaderPulse } from "./gym-visuals";
+import { MyGoalCard } from "./goals";
+import { reachedWeightTarget } from "@/lib/goals";
+import { useFoodLine, useWeekdayName } from "./nutrition-text";
+import {
+  formatClock,
+  formatRest,
+  nextExerciseIndex,
+  plannedSets,
+  restAfterSet,
+  supersetChains,
+  type PlannedSet,
+} from "@/lib/workout-sets";
+import { exerciseDisplayName } from "@/lib/exercise-names-ar";
+import { WEEK_ORDER, isoForWeekday, sampleDateForWeekday } from "@/lib/week";
 import {
   useCompletionStats,
   useLogProgressEntry,
@@ -117,6 +135,32 @@ function ClientContent({ page }: { page: string }) {
       return null;
   }
 }
+/** A meal's foods in one line ("Oats, Greek yogurt +2 more") — never calories. */
+function mealSummary(
+  meal: Pick<MealWithItems, "meal_items" | "foods_summary">,
+  t: ReturnType<typeof useI18n>["t"],
+) {
+  const names = (meal.meal_items ?? []).map((i) => i.name);
+  if (names.length === 0) return meal.foods_summary ?? "";
+  const shown = names.slice(0, 2).join(", ");
+  return names.length > 2
+    ? `${shown} ${t("client.nutrition.moreFoods", { n: names.length - 2 })}`
+    : shown;
+}
+
+/** Opens the celebration when a percentage reaches 100 because of something the athlete did
+ *  (not when the page loads already complete). */
+function useCompletionCelebration(pct: number, ready: boolean) {
+  const [open, setOpen] = useState(false);
+  const previous = useRef<number | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    if (previous.current !== null && previous.current < 100 && pct >= 100) setOpen(true);
+    previous.current = pct;
+  }, [pct, ready]);
+  return [open, () => setOpen(false)] as const;
+}
+
 type TodayTask = {
   id: string;
   title: string;
@@ -154,12 +198,12 @@ function useTodayTasks() {
       toggle: () => completeAssignment.mutate(data.assignment!.id, { onError }),
     });
   }
-  for (const meal of data.plan?.meals ?? []) {
+  for (const meal of data.meals) {
     const log = data.mealLogs.find((l) => l.meal_id === meal.id);
     tasks.push({
       id: `meal-${meal.id}`,
       title: meal.name,
-      meta: `${meal.calories} ${t("common.kcal")}`,
+      meta: mealSummary(meal, t),
       time: meal.meal_time?.slice(0, 5) ?? t("task.anytime"),
       type: "meal",
       done: log?.completed ?? false,
@@ -210,7 +254,8 @@ function useTodayTasks() {
 function Dashboard() {
   const { t, tp, fmt } = useI18n();
   const { profile } = useAuth();
-  const { tasks, pct, assignment } = useTodayTasks();
+  const { tasks, pct, assignment, isLoading } = useTodayTasks();
+  const [celebrating, closeCelebration] = useCompletionCelebration(pct, !isLoading);
   const stats = useClientStats();
   const { data: coach } = useMyCoach();
   const { data: meetings } = useMeetings();
@@ -232,6 +277,7 @@ function Dashboard() {
         eyebrow={today}
         title={t("client.dashboard.greeting", { name: firstName })}
         subtitle={t("client.dashboard.subtitle")}
+        action={<HeaderPulse />}
       />
       <section className="client-hero">
         <img
@@ -366,16 +412,32 @@ function Dashboard() {
           )}
         </section>
       </div>
+      <div className="mt-8">
+        <MyGoalCard />
+      </div>
+      <Celebration
+        open={celebrating}
+        onClose={closeCelebration}
+        title={t("celebrate.dayTitle")}
+        body={t("celebrate.dayBody")}
+      />
     </>
   );
 }
 function Today() {
   const { t, tp, fmt } = useI18n();
   const { tasks, pct, isLoading } = useTodayTasks();
+  const [celebrating, closeCelebration] = useCompletionCelebration(pct, !isLoading);
   const navigate = useNavigate();
   const today = fmt.date(new Date(), { weekday: "long", month: "short", day: "numeric" });
   return (
     <>
+      <Celebration
+        open={celebrating}
+        onClose={closeCelebration}
+        title={t("celebrate.dayTitle")}
+        body={t("celebrate.dayBody")}
+      />
       <div className="today-head">
         <div>
           <p className="eyebrow">{today}</p>
@@ -384,7 +446,7 @@ function Today() {
         </div>
         <ProgressRing value={pct} size={145} />
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">{t("client.today.loading")}</p>}
+      {isLoading && <DumbbellLoader label={t("client.today.loading")} />}
       {!isLoading && tasks.length === 0 && (
         <p className="text-sm text-muted-foreground">{t("client.today.empty")}</p>
       )}
@@ -443,6 +505,7 @@ function Today() {
 }
 function Week() {
   const { t, fmt } = useI18n();
+  const navigate = useNavigate();
   const dates = weekDates();
   const [day, setDay] = useState(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1);
   const from = isoDate(dates[0]!);
@@ -470,7 +533,8 @@ function Week() {
   });
   const selectedDay = weekSummary[day]!;
   const isRest = !selectedDay.title;
-  const dayPlan = planForDay(plans ?? [], !isRest);
+  const selectedWeekday = dates[day]!.getDay();
+  const dayMeals = mealsForDay(planForDay(plans ?? [], !isRest, selectedWeekday), selectedWeekday);
   const label = selectedDay.title ?? t("common.rest");
 
   return (
@@ -535,15 +599,16 @@ function Week() {
         <section>
           <SectionTitle overline={t("client.week.fuel")} title={t("client.week.meals")} />
           <div className="panel p-2">
-            {(dayPlan?.meals ?? []).length === 0 && (
+            {dayMeals.length === 0 && (
               <p className="p-4 text-sm text-muted-foreground">{t("client.week.noPlan")}</p>
             )}
-            {(dayPlan?.meals ?? []).slice(0, 3).map((m: MealRow) => (
+            {dayMeals.slice(0, 4).map((m) => (
               <TaskRow
                 key={m.id}
                 title={m.name}
-                meta={`${m.meal_time?.slice(0, 5) ?? ""} · ${m.calories} ${t("common.kcal")}`}
+                meta={[m.meal_time?.slice(0, 5), mealSummary(m, t)].filter(Boolean).join(" · ")}
                 done={false}
+                onClick={() => navigate({ to: "/client/nutrition" })}
                 icon={<Utensils size={15} />}
               />
             ))}
@@ -553,19 +618,107 @@ function Week() {
     </>
   );
 }
+/** Language-aware text for one planned set ("8–12 reps", "60 kg", "Tempo 3-1-1-0"). */
+function useSetText() {
+  const { t } = useI18n();
+  const reps = (set: PlannedSet) => {
+    switch (set.reps.mode) {
+      case "fixed":
+        return t("session.reps", { reps: set.reps.value });
+      case "range":
+        return t("session.reps", { reps: `${set.reps.min}–${set.reps.max}` });
+      case "amrap":
+        return t("repsMode.amrap");
+      case "failure":
+        return t("repsMode.failure");
+      default:
+        return "";
+    }
+  };
+  const load = (set: PlannedSet) => {
+    switch (set.load.mode) {
+      case "kg":
+        return `${set.load.value} kg`;
+      case "lbs":
+        return `${set.load.value} lbs`;
+      case "pct_1rm":
+        return `${set.load.value}% 1RM`;
+      case "bodyweight":
+        return set.load.value
+          ? `${t("loadMode.bodyweight")} + ${set.load.value} kg`
+          : t("loadMode.bodyweight");
+      default:
+        return "";
+    }
+  };
+  const extras = (set: PlannedSet) =>
+    [
+      set.tempo ? t("session.tempo", { tempo: set.tempo }) : "",
+      set.rpe != null ? `RPE ${set.rpe}` : "",
+      set.rir != null ? `RIR ${set.rir}` : "",
+      set.duration_seconds ? formatClock(set.duration_seconds) : "",
+      set.distance ? `${set.distance.value} ${t(`distanceUnit.${set.distance.unit}`)}` : "",
+    ].filter(Boolean);
+  return { reps, load, extras };
+}
+
+/** Countdown driven by an end timestamp, so it stays accurate when the tab is throttled. */
+function useRestTimer() {
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [total, setTotal] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = endsAt == null ? 0 : Math.max(0, Math.ceil((endsAt - now) / 1000));
+
+  useEffect(() => {
+    if (endsAt == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [endsAt]);
+
+  useEffect(() => {
+    if (endsAt != null && now >= endsAt) {
+      playRestChime();
+      if (typeof navigator !== "undefined" && "vibrate" in navigator)
+        navigator.vibrate?.([180, 90, 180]);
+      setEndsAt(null);
+    }
+  }, [now, endsAt]);
+
+  return {
+    running: endsAt != null,
+    remaining,
+    total,
+    start: (seconds: number) => {
+      setTotal(seconds);
+      setNow(Date.now());
+      setEndsAt(Date.now() + seconds * 1000);
+    },
+    adjust: (delta: number) => {
+      if (endsAt == null) return;
+      const next = Math.max(Date.now(), endsAt + delta * 1000);
+      setTotal((v) => Math.max(1, v + delta));
+      setEndsAt(next);
+    },
+    skip: () => setEndsAt(null),
+  };
+}
+
 function Workout() {
   const i18n = useI18n();
   const { t } = i18n;
+  const xn = (name: string | null | undefined) => exerciseDisplayName(name, i18n.lang);
   const navigate = useNavigate();
   const { data: todayAssignment, isLoading: loadingToday } = useTodayAssignment();
   const { data, isLoading } = useAssignmentDetail(todayAssignment?.id);
   const startAssignment = useStartAssignment();
   const completeAssignment = useCompleteAssignment();
   const logSet = useLogSet();
+  const setText = useSetText();
+  const rest = useRestTimer();
   const [active, setActive] = useState(0);
-  const [restSeconds, setRestSeconds] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState<PlayableVideo | null>(null);
+  const [celebrating, setCelebrating] = useState(false);
   const startedRef = useRef(false);
   const finishedRef = useRef(false);
 
@@ -574,11 +727,19 @@ function Workout() {
   const workoutExercises = [...(assignment?.workouts?.workout_exercises ?? [])].sort(
     (a, b) => a.order_index - b.order_index,
   );
-  const activeExercise = workoutExercises[active];
-  const setsForActive = logs.filter((l) => l.workout_exercise_id === activeExercise?.id).length;
-  const totalSets = workoutExercises.reduce((a, e) => a + e.sets, 0);
-  const completedSets = logs.length;
+  const plans = workoutExercises.map((e) => plannedSets(e));
+  const doneCounts = workoutExercises.map((e, i) =>
+    Math.min(plans[i]!.length, logs.filter((l) => l.workout_exercise_id === e.id).length),
+  );
+  const remaining = plans.map((p, i) => Math.max(0, p.length - doneCounts[i]!));
+  const totalSets = plans.reduce((a, p) => a + p.length, 0);
+  const completedSets = doneCounts.reduce((a, n) => a + n, 0);
   const pct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
+  const activeExercise = workoutExercises[active];
+  const activeSets = plans[active] ?? [];
+  const activeDone = doneCounts[active] ?? 0;
+  const chains = supersetChains(workoutExercises);
+  const chainOf = (i: number) => chains.find((c) => c.includes(i)) ?? [i];
 
   useEffect(() => {
     if (assignment && !assignment.started_at && !startedRef.current) {
@@ -600,31 +761,26 @@ function Workout() {
   }, [assignment?.started_at]);
 
   useEffect(() => {
-    if (restSeconds === null) return;
-    if (restSeconds <= 0) {
-      playRestChime();
-      setRestSeconds(null);
-      return;
-    }
-    const id = setTimeout(() => setRestSeconds((s) => (s === null ? null : s - 1)), 1000);
-    return () => clearTimeout(id);
-  }, [restSeconds]);
-
-  useEffect(() => {
-    if (assignment && totalSets > 0 && completedSets >= totalSets && !finishedRef.current) {
+    if (
+      assignment &&
+      assignment.status !== "completed" &&
+      totalSets > 0 &&
+      completedSets >= totalSets &&
+      !finishedRef.current
+    ) {
       finishedRef.current = true;
+      rest.skip();
       completeAssignment.mutate(assignment.id);
-      toast.success(t("client.workout.complete"));
+      setCelebrating(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [completedSets, totalSets]);
 
-  if (loadingToday || isLoading) {
-    return <p className="p-6 text-sm text-muted-foreground">{t("client.workout.loading")}</p>;
-  }
+  if (loadingToday || isLoading) return <DumbbellLoader label={t("client.workout.loading")} />;
   if (!todayAssignment || !assignment) {
     return (
       <EmptyState
+        icon="kettlebell"
         action={
           <Link to="/client/dashboard">
             <Button variant="outline">{t("client.workout.back")}</Button>
@@ -637,11 +793,49 @@ function Workout() {
   }
 
   const workoutTitle = assignment.workouts?.title ?? t("common.workout");
-  const next = workoutExercises[active + 1];
   const videoUrl = activeExercise?.exercises?.video_url;
+  const nextIndex = activeExercise
+    ? nextExerciseIndex(workoutExercises, remaining, active)
+    : active;
+  const upNext = nextIndex !== active ? workoutExercises[nextIndex] : workoutExercises[active + 1];
+  const steps = (activeExercise?.exercises?.instructions ?? "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const completeSet = () => {
+    if (!activeExercise || activeDone >= activeSets.length) return;
+    unlockChimeAudio();
+    const set = activeSets[activeDone];
+    logSet.mutate(
+      {
+        assignment_id: assignment.id,
+        workout_exercise_id: activeExercise.id,
+        set_number: activeDone + 1,
+      },
+      { onError: (err) => toast.error(errorText(err, i18n, "client.workout.logFailed")) },
+    );
+    const after = remaining.map((r, i) => (i === active ? r - 1 : r));
+    if (after.every((r) => r <= 0)) return;
+    const next = nextExerciseIndex(workoutExercises, after, active);
+    const seconds = restAfterSet(activeExercise, set, {
+      isLastSet: after[active] === 0,
+      hasNextExercise: active < workoutExercises.length - 1,
+    });
+    // Inside a superset the athlete moves straight to the partner exercise.
+    if (next !== active) setActive(next);
+    if (seconds > 0) rest.start(seconds);
+    else rest.skip();
+  };
 
   return (
     <>
+      <Celebration
+        open={celebrating}
+        onClose={() => setCelebrating(false)}
+        title={t("celebrate.workoutTitle")}
+        body={t("celebrate.workoutBody", { title: workoutTitle })}
+      />
       <div className="session-top">
         <div>
           <p className="eyebrow">{t("client.workout.active", { count: elapsed })}</p>
@@ -658,17 +852,23 @@ function Workout() {
       <div className="workout-session">
         <aside className="exercise-rail">
           {workoutExercises.map((e, i) => {
-            const done = logs.filter((l) => l.workout_exercise_id === e.id).length;
+            const done = doneCounts[i]!;
+            const total = plans[i]!.length;
+            const chain = chainOf(i);
             return (
               <button
                 onClick={() => setActive(i)}
-                className={`${active === i ? "active" : ""} ${done === e.sets ? "done" : ""}`}
+                className={`${active === i ? "active" : ""} ${done === total ? "done" : ""} ${chain.length > 1 ? "in-superset" : ""}`}
+                aria-current={active === i ? "step" : undefined}
                 key={e.id}
               >
-                <span>{done === e.sets ? <Check /> : i + 1}</span>
+                <span>{done === total ? <Check /> : i + 1}</span>
                 <div>
-                  <b>{e.exercises?.name ?? t("common.exercise")}</b>
-                  <small>{t("client.workout.setsOf", { done, total: e.sets })}</small>
+                  <b>{xn(e.exercises?.name) || t("common.exercise")}</b>
+                  <small>
+                    {t("client.workout.setsOf", { done, total })}
+                    {chain.length > 1 && ` · ${t("session.superset")}`}
+                  </small>
                 </div>
               </button>
             );
@@ -680,7 +880,9 @@ function Workout() {
               <div className="exercise-video">
                 <img
                   src={
-                    activeExercise.exercises?.thumbnail_url || (active % 2 ? runner : workoutImage)
+                    activeExercise.exercises?.image_url ||
+                    activeExercise.exercises?.thumbnail_url ||
+                    (active % 2 ? runner : workoutImage)
                   }
                   width={1600}
                   height={912}
@@ -693,7 +895,7 @@ function Workout() {
                   onClick={() =>
                     videoUrl &&
                     setPlaying({
-                      title: activeExercise.exercises?.name ?? t("common.exercise"),
+                      title: xn(activeExercise.exercises?.name) || t("common.exercise"),
                       url: videoUrl,
                     })
                   }
@@ -707,90 +909,175 @@ function Workout() {
                     n: active + 1,
                     total: workoutExercises.length,
                   })}
+                  {activeExercise.superset_with_next && workoutExercises[active + 1]
+                    ? ` · ${t("session.supersetWith", { name: xn(workoutExercises[active + 1]!.exercises?.name) })}`
+                    : ""}
                 </p>
-                <h2>{activeExercise.exercises?.name ?? t("common.exercise")}</h2>
-                {activeExercise.exercises?.instructions && (
-                  <p>{activeExercise.exercises.instructions}</p>
+                <h2>{xn(activeExercise.exercises?.name) || t("common.exercise")}</h2>
+                {activeExercise.exercises?.description && (
+                  <p>{activeExercise.exercises.description}</p>
                 )}
                 <div className="prescription">
                   <div>
                     <small>{t("client.workout.setsReps")}</small>
                     <b>
-                      {activeExercise.sets} × {activeExercise.reps}
+                      {activeSets.length} × {setText.reps(activeSets[0]!) || "—"}
                     </b>
                   </div>
                   <div>
                     <small>{t("client.workout.load")}</small>
-                    <b>{activeExercise.load ?? "—"}</b>
+                    <b>{setText.load(activeSets[0]!) || "—"}</b>
                   </div>
                   <div>
                     <small>{t("client.workout.rest")}</small>
-                    <b>{activeExercise.rest_seconds ? `${activeExercise.rest_seconds}s` : "—"}</b>
+                    <b dir="ltr">
+                      {activeExercise.superset_with_next && workoutExercises[active + 1]
+                        ? t("rest.none")
+                        : formatRest(activeExercise.rest_seconds)}
+                    </b>
                   </div>
                 </div>
-                <div className="set-dots">
-                  {Array.from({ length: activeExercise.sets }).map((_, i) => (
-                    <button key={i} className={i < setsForActive ? "done" : ""} disabled>
-                      {i < setsForActive ? <Check /> : i + 1}
-                    </button>
-                  ))}
-                </div>
+                <ol className="session-sets">
+                  {activeSets.map((set, i) => {
+                    const done = i < activeDone;
+                    const current = i === activeDone;
+                    const extras = setText.extras(set);
+                    const restFor =
+                      set.rest_seconds ??
+                      (i === activeSets.length - 1 && activeExercise.rest_after_seconds != null
+                        ? activeExercise.rest_after_seconds
+                        : activeExercise.rest_seconds);
+                    return (
+                      <li
+                        key={set.id}
+                        className={`${done ? "done" : ""} ${current ? "current" : ""}`}
+                        aria-current={current ? "step" : undefined}
+                      >
+                        <span className="session-set-no">{done ? <Check /> : i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <b>
+                            {[setText.reps(set), setText.load(set)].filter(Boolean).join(" · ") ||
+                              t(`setType.${set.type}`)}
+                          </b>
+                          <small>
+                            {set.type !== "normal" && (
+                              <span className={`set-type-tag ${set.type}`}>
+                                {t(`setType.${set.type}`)}
+                              </span>
+                            )}
+                            {extras.join(" · ")}
+                            {set.notes ? ` · ${set.notes}` : ""}
+                          </small>
+                        </div>
+                        <span className="session-set-rest" title={t("session.restAfter")}>
+                          <Timer aria-hidden="true" />
+                          <span dir="ltr">
+                            {activeExercise.superset_with_next && workoutExercises[active + 1]
+                              ? "0s"
+                              : formatRest(restFor)}
+                          </span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
                 <Button
                   size="lg"
                   className="w-full"
-                  disabled={setsForActive >= activeExercise.sets || logSet.isPending}
-                  onClick={() => {
-                    unlockChimeAudio();
-                    logSet.mutate(
-                      {
-                        assignment_id: assignment.id,
-                        workout_exercise_id: activeExercise.id,
-                        set_number: setsForActive + 1,
-                      },
-                      {
-                        onError: (err) =>
-                          toast.error(errorText(err, i18n, "client.workout.logFailed")),
-                      },
-                    );
-                    setRestSeconds(activeExercise.rest_seconds ?? 60);
-                  }}
+                  disabled={activeDone >= activeSets.length || logSet.isPending}
+                  onClick={completeSet}
                 >
-                  {t("client.workout.completeSet")} <Check />
+                  {activeDone >= activeSets.length
+                    ? t("session.exerciseDone")
+                    : t("session.completeSetN", { n: activeDone + 1 })}{" "}
+                  <Check />
                 </Button>
+                {(steps.length > 0 ||
+                  activeExercise.exercises?.cues ||
+                  activeExercise.exercises?.common_mistakes ||
+                  activeExercise.notes) && (
+                  <div className="coaching-notes">
+                    {activeExercise.notes && (
+                      <p className="coach-says">
+                        <b>{t("session.coachNote")}</b> {activeExercise.notes}
+                      </p>
+                    )}
+                    {steps.length > 0 && (
+                      <details open={steps.length <= 4}>
+                        <summary>{t("session.howTo")}</summary>
+                        <ol>
+                          {steps.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ol>
+                      </details>
+                    )}
+                    {activeExercise.exercises?.cues && (
+                      <details>
+                        <summary>{t("exercise.cues")}</summary>
+                        <p className="whitespace-pre-wrap">{activeExercise.exercises.cues}</p>
+                      </details>
+                    )}
+                    {activeExercise.exercises?.common_mistakes && (
+                      <details>
+                        <summary>{t("exercise.mistakes")}</summary>
+                        <p className="whitespace-pre-wrap">
+                          {activeExercise.exercises.common_mistakes}
+                        </p>
+                      </details>
+                    )}
+                  </div>
+                )}
               </div>
             </main>
-            <aside className="rest-panel">
+            <aside className={`rest-panel ${rest.running ? "running" : ""}`} aria-live="polite">
               <Timer />
               <p className="eyebrow">{t("client.workout.restTimer")}</p>
-              <b dir="ltr">
-                {restSeconds != null
-                  ? `${String(Math.floor(restSeconds / 60)).padStart(2, "0")}:${String(restSeconds % 60).padStart(2, "0")}`
-                  : "00:00"}
+              <b dir="ltr" className="rest-clock">
+                {formatClock(rest.running ? rest.remaining : 0)}
               </b>
+              <div className="rest-meter" aria-hidden="true">
+                <span
+                  style={{
+                    transform: `scaleX(${rest.running && rest.total > 0 ? rest.remaining / rest.total : 0})`,
+                  }}
+                />
+              </div>
               <div className="flex gap-2" dir="ltr">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setRestSeconds((s) => Math.max(0, (s ?? 0) - 15))}
+                  disabled={!rest.running}
+                  aria-label={t("session.minus15")}
+                  onClick={() => rest.adjust(-15)}
                 >
-                  -15
+                  −15s
                 </Button>
-                <Button size="sm" onClick={() => setRestSeconds(null)}>
+                <Button size="sm" disabled={!rest.running} onClick={rest.skip}>
                   {t("client.workout.skip")}
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setRestSeconds((s) => (s ?? 0) + 15)}
+                  disabled={!rest.running}
+                  aria-label={t("session.plus15")}
+                  onClick={() => rest.adjust(15)}
                 >
-                  +15
+                  +15s
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                {next
-                  ? t("client.workout.next", { name: next.exercises?.name ?? t("common.exercise") })
-                  : t("client.workout.last")}
+                {rest.running
+                  ? t("session.restingThen", {
+                      name: xn(workoutExercises[active]?.exercises?.name) || t("common.exercise"),
+                    })
+                  : upNext
+                    ? t("client.workout.next", {
+                        name: xn(upNext.exercises?.name) || t("common.exercise"),
+                      })
+                    : t("client.workout.last")}
               </p>
+              <p className="rest-hint">{t("session.restHint")}</p>
             </aside>
           </>
         )}
@@ -801,48 +1088,68 @@ function Workout() {
 }
 function Nutrition() {
   const { t, fmt } = useI18n();
+  const i18n = useI18n();
   const { user } = useAuth();
+  const dayName = useWeekdayName();
+  const foodLine = useFoodLine();
   const { data: plans, isLoading } = useMyNutritionPlans();
   const { data: todayAssignment } = useTodayAssignment();
-  const today = isoDate();
-  const { data: logs } = useMealLogs(user?.id, today);
+  const todayWeekday = new Date().getDay();
+  const todayIso = isoDate();
+  const [weekday, setWeekday] = useState(todayWeekday);
+  const date = isoForWeekday(weekday);
+  const isFuture = date > todayIso;
+  const { data: logs } = useMealLogs(user?.id, date);
   const toggleMeal = useToggleMealLog();
   const { data: coach } = useMyCoach();
   const [pickedId, setPickedId] = useState<string | null>(null);
 
   const all = plans ?? [];
-  const plan = all.find((p) => p.id === pickedId) ?? planForDay(all, !!todayAssignment);
-  const meals = plan?.meals ?? [];
+  const plan =
+    all.find((p) => p.id === pickedId) ?? planForDay(all, !!todayAssignment, todayWeekday);
+  const meals = mealsForDay(plan, weekday);
   const doneMealIds = new Set((logs ?? []).filter((l) => l.completed).map((l) => l.meal_id));
-  const totals = meals.reduce(
-    (acc: { kcal: number; protein: number; carbs: number; fat: number }, m: MealRow) => {
-      if (!doneMealIds.has(m.id)) return acc;
-      acc.kcal += m.calories;
-      acc.protein += m.protein_g;
-      acc.carbs += m.carbs_g;
-      acc.fat += m.fat_g;
-      return acc;
-    },
-    { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+  const eaten = meals.filter((m) => doneMealIds.has(m.id)).length;
+  const marker = plan?.day_types?.[String(weekday)];
+  const [celebrating, closeCelebration] = useCompletionCelebration(
+    meals.length ? Math.round((eaten / meals.length) * 100) : 0,
+    !!logs && !isFuture,
   );
 
-  if (isLoading)
-    return <p className="p-6 text-sm text-muted-foreground">{t("client.nutrition.loading")}</p>;
-  if (!plan) return <EmptyState>{t("client.nutrition.none")}</EmptyState>;
+  if (isLoading) return <DumbbellLoader label={t("client.nutrition.loading")} />;
+  if (!plan) return <EmptyState icon="plate">{t("client.nutrition.none")}</EmptyState>;
+
+  const toggle = (mealId: string, done: boolean) =>
+    toggleMeal.mutate(
+      { mealId, date, completed: !done },
+      { onError: (err) => toast.error(errorText(err, i18n, "errors.generic")) },
+    );
 
   return (
     <>
+      <Celebration
+        open={celebrating}
+        onClose={closeCelebration}
+        title={t("celebrate.mealsTitle")}
+        body={t("celebrate.mealsBody")}
+      />
       <PageHead
-        eyebrow={fmt.date(new Date(), { weekday: "long" })}
+        eyebrow={fmt.date(new Date(), { weekday: "long", day: "numeric", month: "short" })}
         title={t("client.nutrition.title")}
-        subtitle={t("client.nutrition.subtitle")}
+        subtitle={t("client.nutrition.weekSubtitle")}
       />
       {all.length > 1 && (
         <div className="toolbar">
-          <div className="segmented scroll" aria-label={t("client.nutrition.yourPlans")}>
+          <div
+            className="segmented scroll"
+            role="tablist"
+            aria-label={t("client.nutrition.yourPlans")}
+          >
             {all.map((p) => (
               <button
                 key={p.id}
+                role="tab"
+                aria-selected={plan.id === p.id}
                 className={plan.id === p.id ? "selected" : ""}
                 onClick={() => setPickedId(p.id)}
               >
@@ -855,58 +1162,88 @@ function Nutrition() {
           </div>
         </div>
       )}
+      <div className="week-tabs client" role="tablist" aria-label={t("client.nutrition.week")}>
+        {WEEK_ORDER.map((d) => (
+          <button
+            key={d}
+            role="tab"
+            aria-selected={weekday === d}
+            className={`${weekday === d ? "selected" : ""} ${d === todayWeekday ? "today" : ""}`}
+            onClick={() => setWeekday(d)}
+          >
+            <small>{dayName(d, "short")}</small>
+            <b>{fmt.date(parseIsoDate(isoForWeekday(d)), { day: "numeric" })}</b>
+            <span className={`day-marker ${plan.day_types?.[String(d)] ?? "none"}`}>
+              {plan.day_types?.[String(d)] ? t(`dayMarker.${plan.day_types[String(d)]!}`) : "·"}
+            </span>
+          </button>
+        ))}
+      </div>
       <section className="nutrition-daily">
         <div>
-          <p className="eyebrow">{t("client.nutrition.dailyEnergy")}</p>
-          <strong>{totals.kcal}</strong>
-          <span>{t("client.nutrition.ofKcal", { count: plan.target_calories })}</span>
-          <ProgressBar
-            value={plan.target_calories ? (totals.kcal / plan.target_calories) * 100 : 0}
-          />
+          <p className="eyebrow">
+            {weekday === todayWeekday ? t("client.nutrition.today") : dayName(weekday)}
+            {marker ? ` · ${t(`dayMarker.${marker}`)}` : ""}
+          </p>
+          <strong>
+            {eaten}
+            <span>/{meals.length}</span>
+          </strong>
+          <span>{t("client.nutrition.mealsEaten")}</span>
+          <ProgressBar value={meals.length ? (eaten / meals.length) * 100 : 0} />
         </div>
-        <div className="macro-strip">
-          {[
-            ["P", totals.protein, plan.target_protein_g],
-            ["C", totals.carbs, plan.target_carbs_g],
-            ["F", totals.fat, plan.target_fat_g],
-          ].map((x) => (
-            <div key={x[0] as string}>
-              <span>{x[0]}</span>
-              <b>{t("client.nutrition.grams", { count: x[1] as number })}</b>
-              <small>{t("client.nutrition.ofGrams", { count: x[2] as number })}</small>
-            </div>
-          ))}
-        </div>
+        {plan.notes && <p className="nutrition-notes whitespace-pre-wrap">{plan.notes}</p>}
       </section>
-      {plan.notes && (
-        <p className="panel mt-4 whitespace-pre-wrap p-4 text-sm text-muted-foreground">
-          {plan.notes}
-        </p>
+      {isFuture && (
+        <p className="mt-4 text-sm text-muted-foreground">{t("client.nutrition.futureDay")}</p>
       )}
-      <div className="meal-list mt-8">
-        {meals.map((m: MealRow, i: number) => {
+      <div className="meal-list mt-6">
+        {meals.length === 0 && (
+          <EmptyState icon="plate">
+            {t("client.nutrition.noMealsDay", { day: dayName(weekday) })}
+          </EmptyState>
+        )}
+        {meals.map((m) => {
           const done = doneMealIds.has(m.id);
           return (
-            <button
-              onClick={() => toggleMeal.mutate({ mealId: m.id, date: today, completed: !done })}
-              className={`meal-row client ${done ? "done" : ""}`}
-              key={m.id}
-            >
+            <article className={`meal-row client ${done ? "done" : ""}`} key={m.id}>
               <time>{m.meal_time?.slice(0, 5) ?? "—"}</time>
-              <span className={`task-check ${done ? "checked" : ""}`}>
+              <button
+                type="button"
+                className={`task-check ${done ? "checked" : ""}`}
+                aria-pressed={done}
+                aria-label={t(
+                  done ? "client.nutrition.markNotEaten" : "client.nutrition.markEaten",
+                  { meal: m.name },
+                )}
+                disabled={isFuture || toggleMeal.isPending}
+                onClick={() => toggle(m.id, done)}
+              >
                 {done ? <Check /> : <Utensils />}
-              </span>
-              <div className="flex-1 text-start">
-                <p className="eyebrow">{t("client.nutrition.mealN", { n: i + 1 })}</p>
+              </button>
+              <div className="min-w-0 flex-1 text-start">
                 <h3>{m.name}</h3>
-                <p>{m.foods_summary ?? t("client.nutrition.noFoods")}</p>
+                {m.meal_items.length > 0 ? (
+                  <ul className="food-lines">
+                    {m.meal_items.map((item) => (
+                      <li key={item.id}>
+                        <span>{foodLine(item)}</span>
+                        {item.alternatives.length > 0 && (
+                          <span className="food-or">
+                            {item.alternatives
+                              .map((a) => `${t("nutrition.or")} ${foodLine(a)}`)
+                              .join(" · ")}
+                          </span>
+                        )}
+                        {item.notes && <small>{item.notes}</small>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{m.foods_summary ?? t("client.nutrition.noFoods")}</p>
+                )}
               </div>
-              <div className="meal-macros">
-                <b>{m.calories}</b>
-                <small>{t("common.kcalUpper")}</small>
-              </div>
-              <ChevronRight />
-            </button>
+            </article>
           );
         })}
       </div>
@@ -936,7 +1273,9 @@ function Progress() {
   const { data: entries } = useProgressEntries();
   const { data: records } = usePersonalRecords();
   const logProgress = useLogProgressEntry();
+  const { data: goals } = useMyGoals();
   const [weight, setWeight] = useState("");
+  const [goalHit, setGoalHit] = useState(false);
 
   const trend = (entries ?? [])
     .filter((e) => e.weight_kg != null)
@@ -952,9 +1291,20 @@ function Progress() {
       toast.error(t("validation.weight"));
       return;
     }
+    const previous = [...(entries ?? [])].reverse().find((e) => e.weight_kg != null)?.weight_kg;
     try {
       await logProgress.mutateAsync({ weight_kg: value });
-      toast.success(t("client.progress.logged"));
+      if (
+        reachedWeightTarget(
+          goals?.target_weight_kg,
+          previous != null ? Number(previous) : null,
+          value,
+        )
+      ) {
+        setGoalHit(true);
+      } else {
+        toast.success(t("client.progress.logged"));
+      }
       setWeight("");
     } catch (err) {
       toast.error(errorText(err, i18n, "client.progress.logFailed"));
@@ -963,6 +1313,12 @@ function Progress() {
 
   return (
     <>
+      <Celebration
+        open={goalHit}
+        onClose={() => setGoalHit(false)}
+        title={t("celebrate.goalTitle")}
+        body={t("celebrate.goalBody", { value: goals?.target_weight_kg ?? "" })}
+      />
       <PageHead
         eyebrow={t("client.progress.eyebrow")}
         title={t("client.progress.title")}
@@ -1250,7 +1606,7 @@ function Messages() {
     setText("");
   };
 
-  if (isLoading) return <p className="p-6 text-sm text-muted-foreground">{t("common.loading")}</p>;
+  if (isLoading) return <DumbbellLoader />;
   if (!coach) return <EmptyState>{t("client.notLinked")}</EmptyState>;
 
   return (

@@ -23,6 +23,7 @@ import { useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
 import { initialsFromName, isoDate } from "@/lib/format";
 import type { CheckInRow, WorkoutStatus } from "@/lib/database.types";
+import { DumbbellLoader } from "./gym-visuals";
 
 /** Display name for an athlete whose profile may not have a name yet. */
 export function useDisplayName() {
@@ -273,7 +274,7 @@ export function ScheduleMeetingDialog({
           <DialogTitle>{t("coach.meetings.dialogTitle")}</DialogTitle>
         </DialogHeader>
         {zoomLoading ? (
-          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+          <DumbbellLoader compact />
         ) : !connected ? (
           <ConnectZoomPrompt />
         ) : (

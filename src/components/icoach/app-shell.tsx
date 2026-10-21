@@ -25,6 +25,7 @@ import { useAuth } from "@/lib/auth";
 import { dashboardPath } from "@/lib/account";
 import { useNotifications } from "@/hooks/use-notifications";
 import { initialsFromName } from "@/lib/format";
+import { DumbbellLoader } from "./gym-visuals";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import type { NotificationRow } from "@/lib/database.types";
 
@@ -125,8 +126,8 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
   }
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        {t("shell.loading")}
+      <div className="grid min-h-screen place-items-center bg-background">
+        <DumbbellLoader label={t("shell.loading")} />
       </div>
     );
   }

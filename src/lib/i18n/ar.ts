@@ -1,4 +1,5 @@
 import type { TranslationKey } from "./en";
+import { arFeatures } from "./ar-features";
 
 // Arabic strings. Typed against the English keys, so a missing translation fails the build.
 // Plural keys may also define Arabic-specific forms (`_zero`, `_two`, `_few`, `_many`) —
@@ -254,16 +255,11 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   // landing
   "landing.builtFor": "صُمّم للعمل الجاد",
   "landing.enter": "ادخل إلى iCoach",
-  "landing.eyebrow": "تدريب الأداء · بمفهوم جديد",
   "landing.headline1": "تدرّب. تابع.",
   "landing.headline2": "تحوّل.",
   "landing.description": "نظام واحد مركّز لكل تمرين ووجبة ومتابعة ولحظة تدريب تدفعك إلى الأمام.",
   "landing.athlete": "أنا متدرب",
   "landing.coach": "أنا مدرب",
-  "landing.proof.completion": "متوسط الإنجاز",
-  "landing.proof.athletes": "متدربًا نشطًا",
-  "landing.proof.sessions": "جلسة تدريبية",
-  "landing.scroll": "مرّر للأسفل",
   "landing.heroAlt": "رياضي يؤدي تمرين القرفصاء بالبار",
 
   // shell / navigation
@@ -1068,12 +1064,6 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "client.nutrition.loading": "جارٍ تحميل خطتك...",
   "client.nutrition.none": "لم يُعِدّ مدربك خطة تغذية بعد.",
   "client.nutrition.title": "كُل لتؤدي.",
-  "client.nutrition.subtitle": "توقيت واضح. بلا تخمين. مبنية حول تدريب اليوم.",
-  "client.nutrition.dailyEnergy": "الطاقة اليومية",
-  "client.nutrition.ofKcal": "/ {count} سعرة",
-  "client.nutrition.ofGrams": "من {count} جم",
-  "client.nutrition.grams": "{count} جم",
-  "client.nutrition.mealN": "الوجبة {n}",
   "client.nutrition.noFoods": "لم تُضَف أطعمة",
   "client.nutrition.coachQuestion": "لديك سؤال عن التغذية؟ أرسل رسالة واحصل على إجابة شخصية.",
   "client.nutrition.yourPlans": "خططك",
@@ -1142,4 +1132,5 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "client.checkins.photoAngles": "من الأمام والجانب والخلف",
   "client.checkins.submit": "إرسال المتابعة الأسبوعية",
   "client.checkins.submitting": "جارٍ الإرسال...",
+  ...arFeatures,
 };

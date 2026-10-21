@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
 import { computeStreak, useCoachRoster } from "./use-clients";
 import { useTodayAssignment } from "./use-workouts";
-import { planForDay, useMealLogs, useMyNutritionPlans } from "./use-nutrition";
+import { mealsForDay, planForDay, useMealLogs, useMyNutritionPlans } from "./use-nutrition";
 import { addDays, isoDate, startOfWeek } from "@/lib/format";
 
 /** Coach dashboard: composes the roster (already fetched) with meetings + a 7-day team trend. */
@@ -139,10 +139,13 @@ export function useClientToday() {
     habitTargets.isLoading ||
     habitLogs.isLoading;
 
+  const plan = planForDay(plans.data ?? [], !!assignment.data);
   return {
     isLoading,
     assignment: assignment.data,
-    plan: planForDay(plans.data ?? [], !!assignment.data),
+    plan,
+    /** Today's meals from the plan (meals are planned per weekday). */
+    meals: mealsForDay(plan, new Date().getDay()),
     mealLogs: mealLogs.data ?? [],
     habitTargets: habitTargets.data ?? [],
     habitLogs: habitLogs.data ?? [],

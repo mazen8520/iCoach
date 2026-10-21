@@ -49,18 +49,48 @@ export interface ProgramRow {
   updated_at: string;
 }
 
+export type BodyRegion = "upper_body" | "lower_body" | "core" | "full_body" | "cardio" | "mobility";
+
+export type ExerciseDifficulty = "beginner" | "intermediate" | "advanced";
+
 export interface ExerciseRow {
   id: string;
-  coach_id: string;
+  /** null for built-in library exercises (is_global). */
+  coach_id: string | null;
   name: string;
   category: string | null;
+  /** Legacy single values; the multi-select arrays below are the source of truth now. */
   muscle_group: string | null;
   equipment: string | null;
+  /** Step-by-step instructions, one step per line. */
   instructions: string | null;
+  description: string | null;
+  cues: string | null;
+  common_mistakes: string | null;
+  primary_muscles: string[];
+  secondary_muscles: string[];
+  equipment_list: string[];
+  difficulty: ExerciseDifficulty | null;
+  exercise_type: string | null;
   video_url: string | null;
+  image_url: string | null;
   thumbnail_url: string | null;
   duration_seconds: number | null;
+  alternative_ids: string[];
+  archived_at: string | null;
+  /** false for a private copy made when an exercise was edited "for this workout only". */
+  is_library: boolean;
+  source_exercise_id: string | null;
+  /** Built-in library exercise shared by every coach (read-only). */
+  is_global: boolean;
+  body_region: BodyRegion | null;
+  /** Starting prescription copied into a program when the exercise is added. */
+  default_sets: number | null;
+  default_reps: string | null;
+  default_rest_seconds: number | null;
+  default_duration_seconds: number | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface WorkoutRow {
@@ -72,6 +102,8 @@ export interface WorkoutRow {
   cover_image_url: string | null;
   duration_minutes: number | null;
   notes: string | null;
+  /** Rest between sets pre-filled on every exercise added to this workout. */
+  default_rest_seconds: number;
   created_at: string;
   updated_at: string;
 }
@@ -81,11 +113,18 @@ export interface WorkoutExerciseRow {
   workout_id: string;
   exercise_id: string;
   order_index: number;
+  /** Plain-text summary kept in sync with set_plan for older views. */
   sets: number;
   reps: string;
   load: string | null;
+  /** Rest between sets (seconds). */
   rest_seconds: number | null;
   notes: string | null;
+  /** One entry per set — see `PlannedSet` in src/lib/workout-sets.ts. Empty on legacy rows. */
+  set_plan: unknown[];
+  /** Rest after the last set before the next exercise (seconds); null = same as rest_seconds. */
+  rest_after_seconds: number | null;
+  superset_with_next: boolean;
 }
 
 export interface WorkoutAssignmentRow {
@@ -111,17 +150,21 @@ export interface SetLogRow {
   completed_at: string;
 }
 
+export type DayMarker = "training" | "rest" | "refeed";
+
+// Calories and macros are NOT on these two tables: they live in the coach-only
+// nutrition_plan_targets / meal_macros tables so athletes can never receive them.
 export interface NutritionPlanRow {
   id: string;
   coach_id: string;
-  client_id: string;
+  /** null only for templates. */
+  client_id: string | null;
   name: string;
   day_type: string;
-  target_calories: number;
-  target_protein_g: number;
-  target_carbs_g: number;
-  target_fat_g: number;
   is_active: boolean;
+  is_template: boolean;
+  /** Weekday ("0" = Sunday ... "6" = Saturday) -> marker. */
+  day_types: Partial<Record<string, DayMarker>>;
   notes: string | null;
   created_at: string;
 }
@@ -132,7 +175,46 @@ export interface MealRow {
   name: string;
   meal_time: string | null;
   order_index: number;
+  /** Legacy free-text food list, shown when a meal has no food items. */
   foods_summary: string | null;
+  /** 0 = Sunday ... 6 = Saturday. */
+  day_of_week: number;
+}
+
+export type FoodUnit =
+  "g" | "ml" | "pieces" | "cups" | "tbsp" | "tsp" | "scoop" | "slice" | "serving";
+
+export interface FoodAlternative {
+  name: string;
+  quantity?: number | null;
+  unit?: FoodUnit | null;
+}
+
+export interface MealItemRow {
+  id: string;
+  meal_id: string;
+  order_index: number;
+  name: string;
+  quantity: number | null;
+  unit: FoodUnit | null;
+  notes: string | null;
+  alternatives: FoodAlternative[];
+}
+
+/** Coach-only. */
+export interface NutritionPlanTargetsRow {
+  plan_id: string;
+  coach_id: string;
+  target_calories: number;
+  target_protein_g: number;
+  target_carbs_g: number;
+  target_fat_g: number;
+}
+
+/** Coach-only. */
+export interface MealMacrosRow {
+  meal_id: string;
+  coach_id: string;
   calories: number;
   protein_g: number;
   carbs_g: number;
@@ -270,6 +352,45 @@ export interface NotificationRow {
   created_at: string;
 }
 
+export interface StrengthTarget {
+  exercise: string;
+  weight_kg?: number | null;
+  reps?: number | null;
+}
+
+export type MeasurementKey = "waist" | "chest" | "arms" | "hips" | "thighs";
+export type TargetMeasurements = Partial<Record<MeasurementKey, number>>;
+
+export interface ClientGoalsRow {
+  client_id: string;
+  coach_id: string;
+  primary_goal: string | null;
+  primary_goal_custom: string | null;
+  secondary_goals: string[];
+  target_weight_kg: number | null;
+  target_body_fat_pct: number | null;
+  /** Centimetres. */
+  target_measurements: TargetMeasurements;
+  target_date: string | null;
+  strength_targets: StrengthTarget[];
+  weekly_training_days: number | null;
+  notes: string | null;
+  experience_level: ExerciseDifficulty | null;
+  training_location: "home" | "gym" | "both" | null;
+  client_can_edit: boolean;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientGoalHistoryRow {
+  id: string;
+  client_id: string;
+  changed_by: string | null;
+  changed_at: string;
+  changes: Record<string, { old: unknown; new: unknown }>;
+}
+
 export type ScheduleEventType = "session" | "check_in" | "reminder" | "call" | "other";
 
 export interface ScheduleEventRow {
@@ -301,7 +422,7 @@ export interface Database {
         ProgramRow,
         Omit<ProgramRow, "id" | "created_at" | "updated_at"> & { id?: string }
       >;
-      exercises: TableDef<ExerciseRow, Omit<ExerciseRow, "id" | "created_at"> & { id?: string }>;
+      exercises: TableDef<ExerciseRow, Partial<ExerciseRow> & { name: string }>;
       workouts: TableDef<
         WorkoutRow,
         Omit<WorkoutRow, "id" | "created_at" | "updated_at"> & { id?: string }
@@ -320,6 +441,14 @@ export interface Database {
         Omit<NutritionPlanRow, "id" | "created_at"> & { id?: string }
       >;
       meals: TableDef<MealRow, Omit<MealRow, "id"> & { id?: string }>;
+      meal_items: TableDef<MealItemRow, Omit<MealItemRow, "id"> & { id?: string }>;
+      nutrition_plan_targets: TableDef<NutritionPlanTargetsRow, NutritionPlanTargetsRow>;
+      meal_macros: TableDef<MealMacrosRow, MealMacrosRow>;
+      client_goals: TableDef<
+        ClientGoalsRow,
+        Partial<ClientGoalsRow> & { client_id: string; coach_id: string }
+      >;
+      client_goal_history: TableDef<ClientGoalHistoryRow, never>;
       meal_logs: TableDef<MealLogRow, Omit<MealLogRow, "id"> & { id?: string }>;
       habit_targets: TableDef<
         HabitTargetRow,
@@ -360,6 +489,23 @@ export interface Database {
       add_client_by_email: {
         Args: { p_email: string };
         Returns: CoachClient;
+      };
+      copy_nutrition_day: {
+        Args: { p_plan_id: string; p_from_day: number; p_to_days: number[] };
+        Returns: undefined;
+      };
+      copy_nutrition_plan: {
+        Args: {
+          p_source_id: string;
+          p_client_id: string | null;
+          p_name: string | null;
+          p_as_template: boolean;
+        };
+        Returns: string;
+      };
+      platform_stats: {
+        Args: Record<string, never>;
+        Returns: { athletes_coached: number; workouts_completed: number; programs_created: number };
       };
     };
     Enums: {

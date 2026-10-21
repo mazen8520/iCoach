@@ -49,6 +49,10 @@ order:
 | `0009_fix_assignment_policy_recursion.sql` | `is_workout_owner()` helper so the assignment write policy doesn't recurse through `workouts` RLS |
 | `0010_function_privileges.sql` | Revokes RPC access to trigger-only functions, pins `set_updated_at` search_path |
 | `0011_zoom_integration.sql` | Zoom: `zoom_connections` + `zoom_oauth_states` (server-only, RLS with no policies), Zoom columns on `meetings` |
+| `0012_workout_controls.sql` | Per-set plans (`workout_exercises.set_plan` jsonb), rest between exercises, superset link, per-workout default rest; richer, archivable exercise library (muscles, equipment, difficulty, type, cues, image, substitutes, per-workout copies) |
+| `0013_client_goals.sql` | `client_goals` + `client_goal_history` (trigger-written audit log); athlete edit only while `client_can_edit` is on |
+| `0014_nutrition_week_plans.sql` | Saturday–Friday plans: `meals.day_of_week`, `meal_items` (food items + "or" swaps), plan templates, `copy_nutrition_day` / `copy_nutrition_plan`. Calories and macros moved to coach-only `nutrition_plan_targets` / `meal_macros` so athletes can never receive them |
+| `0015_platform_stats.sql` | `platform_stats()`: three aggregate counts for the public home page |
 
 **Tables**
 
@@ -77,6 +81,9 @@ order:
 | `zoom_oauth_states` | Short-lived, single-use OAuth `state` + PKCE verifier for a coach's Connect Zoom attempt. Server-only like `zoom_connections`. |
 | `schedule_events` | Custom coach calendar entries ("New event" on the Schedule page): title, `event_type`, `starts_at`/`ends_at`, description, optional `client_id`. Client-specific events also appear on that athlete's calendar. |
 | `notifications` | In-app notification feed, populated by triggers (see below). `metadata` (jsonb) carries names/titles so the UI can render each notification in the viewer's language; `title` is the English fallback. |
+| `client_goals` / `client_goal_history` | One goals row per athlete (primary + secondary goals, targets, deadline, strength targets, preferences) and an automatic change log (who, when, field old → new). |
+| `meal_items` | Food items inside a meal: name, quantity + unit, preparation notes, alternative ("or") options. |
+| `nutrition_plan_targets` / `meal_macros` | Coach-only calorie and macro numbers (RLS: owning coach only). Athletes never see calories. |
 
 ### 2.2 Important relationships
 

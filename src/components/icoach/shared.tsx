@@ -44,7 +44,7 @@ import {
 export function FieldSelect({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
-      className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm ${className}`}
+      className={`field-select flex h-9 w-full rounded-md border border-input px-3 text-sm ${className}`}
       {...props}
     />
   );
@@ -58,8 +58,8 @@ export function Field({
   children,
 }: {
   label: string;
-  htmlFor?: string;
-  hint?: string;
+  htmlFor?: string | undefined;
+  hint?: string | undefined;
   children: ReactNode;
 }) {
   return (

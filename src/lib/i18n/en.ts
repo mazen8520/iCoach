@@ -1,3 +1,5 @@
+import { enFeatures } from "./en-features";
+
 // English strings — the source of truth for every user-facing text in iCoach.
 // Keys are grouped by area. `{name}` placeholders are interpolated by `t()`; keys ending in
 // `_one` / `_other` are plural forms used through `tp()`.
@@ -245,17 +247,12 @@ const auth = {
 const landing = {
   "landing.builtFor": "Built for the work",
   "landing.enter": "Enter iCoach",
-  "landing.eyebrow": "PERFORMANCE COACHING · REDEFINED",
   "landing.headline1": "Train. Track.",
   "landing.headline2": "Transform.",
   "landing.description":
     "One focused system for every workout, meal, check-in and coaching moment that moves you forward.",
   "landing.athlete": "I’m an athlete",
   "landing.coach": "I’m a coach",
-  "landing.proof.completion": "avg. completion",
-  "landing.proof.athletes": "active athletes",
-  "landing.proof.sessions": "training sessions",
-  "landing.scroll": "SCROLL TO MOVE",
   "landing.heroAlt": "Athlete performing a barbell squat",
 };
 
@@ -1044,12 +1041,6 @@ const clientPages = {
   "client.nutrition.loading": "Loading your plan...",
   "client.nutrition.none": "Your coach hasn't set up a nutrition plan yet.",
   "client.nutrition.title": "Eat to perform.",
-  "client.nutrition.subtitle": "Clear timing. No guesswork. Built around today's training.",
-  "client.nutrition.dailyEnergy": "Daily energy",
-  "client.nutrition.ofKcal": "/ {count} kcal",
-  "client.nutrition.ofGrams": "of {count}g",
-  "client.nutrition.grams": "{count}g",
-  "client.nutrition.mealN": "MEAL {n}",
   "client.nutrition.noFoods": "No foods listed",
   "client.nutrition.coachQuestion":
     "Have a nutrition question? Send a message and get a personal answer.",
@@ -1150,6 +1141,7 @@ export const en = {
   ...checkIns,
   ...settings,
   ...clientPages,
+  ...enFeatures,
 };
 
 export type TranslationKey = keyof typeof en;

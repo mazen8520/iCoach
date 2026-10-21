@@ -70,6 +70,8 @@ import {
 } from "./coach-shared";
 import { ClientProfile } from "./coach-client-profile";
 import { Schedule } from "./coach-schedule";
+import { Workouts } from "./coach-workouts";
+import { DumbbellLoader, HeaderPulse } from "./gym-visuals";
 import { Nutrition } from "./coach-nutrition";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
@@ -164,12 +166,15 @@ function CoachDashboard() {
             : t("coach.dashboard.subtitleClear")
         }
         action={
-          <Link to="/coach/clients">
-            <Button>
-              <Plus />
-              {t("coach.addClient")}
-            </Button>
-          </Link>
+          <div className="flex items-center gap-4">
+            <HeaderPulse />
+            <Link to="/coach/clients">
+              <Button>
+                <Plus />
+                {t("coach.addClient")}
+              </Button>
+            </Link>
+          </div>
         }
       />
       <section className="dashboard-lead">
@@ -696,9 +701,7 @@ function Clients() {
           )}
         </div>
       )}
-      {isLoading && (
-        <p className="p-6 text-sm text-muted-foreground">{t("coach.clients.loading")}</p>
-      )}
+      {isLoading && <DumbbellLoader label={t("coach.clients.loading")} />}
       {isError && <EmptyState>{t("coach.clients.loadFailed")}</EmptyState>}
       {!isLoading && !isError && roster.length === 0 && (
         <EmptyState>{t("coach.clients.empty")}</EmptyState>
@@ -755,456 +758,6 @@ function Clients() {
           </Link>
         ))}
       </div>
-    </>
-  );
-}
-
-// ============================================================
-// Workouts
-// ============================================================
-
-function NewExerciseDialog({ onCreated }: { onCreated: (id: string) => void }) {
-  const i18n = useI18n();
-  const { t } = i18n;
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("");
-  const createExercise = useCreateExercise();
-
-  const onSubmit = async () => {
-    if (!name.trim()) {
-      toast.error(t("validation.exerciseNameRequired"));
-      return;
-    }
-    try {
-      const created = await createExercise.mutateAsync({
-        name: name.trim(),
-        category: category.trim() || null,
-      });
-      toast.success(t("coach.workouts.exerciseAdded"));
-      setOpen(false);
-      setName("");
-      setCategory("");
-      onCreated(created.id);
-    } catch (err) {
-      toast.error(errorText(err, i18n, "coach.workouts.exerciseFailed"));
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <button className="exercise-option">
-          <span>
-            <Plus size={16} />
-          </span>
-          <b>{t("coach.workouts.newExercise")}</b>
-        </button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t("coach.workouts.newExercise")}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Field label={t("coach.workouts.exerciseName")} htmlFor="ex-name">
-            <Input
-              id="ex-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("coach.workouts.exerciseNamePlaceholder")}
-            />
-          </Field>
-          <Field label={t("coach.workouts.category")} htmlFor="ex-category">
-            <Input
-              id="ex-category"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder={t("coach.workouts.categoryPlaceholder")}
-            />
-          </Field>
-        </div>
-        <DialogFooter>
-          <Button onClick={onSubmit} disabled={createExercise.isPending}>
-            {createExercise.isPending
-              ? t("coach.workouts.adding")
-              : t("coach.workouts.addToLibrary")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** "New workout": the coach names the workout (and optionally sets its duration/description)
- *  before it's created. */
-function NewWorkoutDialog({ onCreated }: { onCreated: (id: string) => void }) {
-  const i18n = useI18n();
-  const { t } = i18n;
-  const createWorkout = useCreateWorkout();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [duration, setDuration] = useState("");
-  const [description, setDescription] = useState("");
-
-  const reset = () => {
-    setTitle("");
-    setDuration("");
-    setDescription("");
-  };
-
-  const onSubmit = async (e?: FormEvent) => {
-    e?.preventDefault();
-    if (!title.trim()) {
-      toast.error(t("validation.workoutNameRequired"));
-      return;
-    }
-    if (duration && !(Number(duration) > 0 && Number(duration) <= 600)) {
-      toast.error(t("validation.number"));
-      return;
-    }
-    try {
-      const created = await createWorkout.mutateAsync({
-        title: title.trim(),
-        ...(duration ? { duration_minutes: Math.round(Number(duration)) } : {}),
-        ...(description.trim() ? { description: description.trim() } : {}),
-      });
-      toast.success(t("coach.workouts.created"));
-      onCreated(created.id);
-      setOpen(false);
-      reset();
-    } catch (err) {
-      toast.error(errorText(err, i18n, "coach.workouts.createFailed"));
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button>
-          <Plus />
-          {t("coach.workouts.newWorkout")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={onSubmit} className="grid gap-4" noValidate>
-          <DialogHeader>
-            <DialogTitle>{t("coach.workouts.newTitle")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Field label={t("coach.workouts.name")} htmlFor="workout-name">
-              <Input
-                id="workout-name"
-                autoFocus
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t("coach.workouts.namePlaceholder")}
-              />
-            </Field>
-            <Field label={t("coach.workouts.duration")} htmlFor="workout-duration">
-              <Input
-                id="workout-duration"
-                type="number"
-                min={1}
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                placeholder="45"
-              />
-            </Field>
-            <Field label={t("coach.workouts.description")} htmlFor="workout-description">
-              <Textarea
-                id="workout-description"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder={t("coach.workouts.descriptionPlaceholder")}
-              />
-            </Field>
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={createWorkout.isPending}>
-              {createWorkout.isPending ? t("coach.workouts.creating") : t("coach.workouts.create")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function Workouts() {
-  const i18n = useI18n();
-  const { t, tp } = i18n;
-  const { data: workouts, isLoading } = useCoachWorkouts();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const { data: library } = useExerciseLibrary(search);
-  const updateWorkout = useUpdateWorkout();
-  const deleteWorkout = useDeleteWorkout();
-  const addExercise = useAddExerciseToWorkout();
-  const removeExercise = useRemoveWorkoutExercise();
-
-  const selected = workouts?.find((w) => w.id === selectedId) ?? workouts?.[0] ?? null;
-  const [title, setTitle] = useState("");
-  const [duration, setDuration] = useState("");
-  const [notes, setNotes] = useState("");
-  useEffect(() => {
-    setTitle(selected?.title ?? "");
-    setDuration(selected?.duration_minutes ? String(selected.duration_minutes) : "");
-    setNotes(selected?.notes ?? "");
-    // Only reset the form when switching which workout is selected, not on every refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id]);
-
-  const workoutExercises = [...(selected?.workout_exercises ?? [])].sort(
-    (a, b) => a.order_index - b.order_index,
-  );
-  const assignmentCount =
-    (selected?.workout_assignments as unknown as { count: number }[] | undefined)?.[0]?.count ?? 0;
-
-  const onAddExercise = async (exerciseId: string) => {
-    if (!selected) {
-      toast.error(t("coach.workouts.createFirst"));
-      return;
-    }
-    try {
-      await addExercise.mutateAsync({
-        workout_id: selected.id,
-        exercise_id: exerciseId,
-        order_index: workoutExercises.length,
-        sets: 3,
-        reps: "8-10",
-        rest_seconds: 60,
-      });
-    } catch (err) {
-      toast.error(errorText(err, i18n, "coach.workouts.addExerciseFailed"));
-    }
-  };
-
-  const onSaveSettings = async () => {
-    if (!selected) return;
-    if (!title.trim()) {
-      toast.error(t("validation.workoutNameRequired"));
-      return;
-    }
-    try {
-      await updateWorkout.mutateAsync({
-        id: selected.id,
-        title: title.trim(),
-        duration_minutes: duration ? Math.round(Number(duration)) : null,
-        notes,
-      });
-      toast.success(t("coach.workouts.saved"));
-    } catch (err) {
-      toast.error(errorText(err, i18n, "coach.workouts.saveFailed"));
-    }
-  };
-
-  const onDelete = async () => {
-    if (!selected) return;
-    try {
-      await deleteWorkout.mutateAsync(selected.id);
-      toast.success(t("coach.workouts.deleted"));
-      setConfirmDelete(false);
-      setSelectedId(null);
-    } catch (err) {
-      toast.error(errorText(err, i18n, "coach.workouts.deleteFailed"));
-    }
-  };
-
-  return (
-    <>
-      <PageHead
-        eyebrow={t("coach.workouts.eyebrow")}
-        title={t("coach.workouts.title")}
-        subtitle={t("coach.workouts.subtitle")}
-        action={<NewWorkoutDialog onCreated={setSelectedId} />}
-      />
-      {!isLoading && (workouts ?? []).length > 1 && (
-        <div className="toolbar">
-          <div className="segmented scroll">
-            {(workouts ?? []).map((w) => (
-              <button
-                key={w.id}
-                className={selected?.id === w.id ? "selected" : ""}
-                onClick={() => setSelectedId(w.id)}
-              >
-                {w.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <div className="builder">
-        <aside className="builder-library">
-          <div className="search-wrap">
-            <Search />
-            <Input
-              placeholder={t("coach.workouts.searchExercises")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <p className="eyebrow mt-5">{t("coach.workouts.exerciseLibrary")}</p>
-          {(library ?? []).map((ex) => (
-            <button onClick={() => onAddExercise(ex.id)} className="exercise-option" key={ex.id}>
-              <span>
-                <Dumbbell size={16} />
-              </span>
-              <b>{ex.name}</b>
-              <Plus size={15} />
-            </button>
-          ))}
-          <NewExerciseDialog onCreated={onAddExercise} />
-        </aside>
-        <section className="builder-canvas">
-          {!selected ? (
-            <div className="grid h-full place-items-center p-10 text-center text-sm text-muted-foreground">
-              {isLoading ? t("common.loading") : t("coach.workouts.emptyCanvas")}
-            </div>
-          ) : (
-            <>
-              <div className="workout-cover">
-                <img
-                  src={battle}
-                  width={1600}
-                  height={912}
-                  loading="lazy"
-                  alt={t("coach.workouts.coverAlt")}
-                />
-                <div>
-                  <p className="eyebrow">
-                    {selected.duration_minutes
-                      ? tp("common.minutes", selected.duration_minutes)
-                      : t("coach.workouts.untimed")}
-                  </p>
-                  <h2>{selected.title}</h2>
-                  {selected.description && <p>{selected.description}</p>}
-                </div>
-                <span className="play-button" aria-hidden="true">
-                  <Play fill="currentColor" />
-                </span>
-              </div>
-              <div className="p-4 md:p-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold">{t("coach.workouts.trainingSequence")}</h3>
-                  <span className="text-xs font-bold text-muted-foreground">
-                    {tp("coach.workouts.exerciseCount", workoutExercises.length)}
-                  </span>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {workoutExercises.length === 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      {t("coach.workouts.addFromLibrary")}
-                    </p>
-                  )}
-                  {workoutExercises.map((e, i) => {
-                    const exercise = e.exercises as unknown as { name: string } | null;
-                    return (
-                      <div className="builder-row" key={e.id}>
-                        <span className="drag-handle">⠿</span>
-                        <b className="index">{String(i + 1).padStart(2, "0")}</b>
-                        <div className="min-w-0 flex-1">
-                          <b>{exercise?.name ?? t("common.exercise")}</b>
-                          <small>
-                            {e.sets} × {e.reps} {e.load ? `· ${e.load}` : ""}
-                          </small>
-                        </div>
-                        <div>
-                          <small>{t("coach.workouts.rest")}</small>
-                          <b>{e.rest_seconds ? `${e.rest_seconds}s` : "—"}</b>
-                        </div>
-                        <button
-                          className="icon-button"
-                          aria-label={t("coach.workouts.removeExercise")}
-                          onClick={() =>
-                            removeExercise.mutate(e.id, {
-                              onError: (err) =>
-                                toast.error(errorText(err, i18n, "coach.workouts.saveFailed")),
-                            })
-                          }
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </section>
-        <aside className="builder-settings">
-          <p className="eyebrow">{t("coach.workouts.settings")}</p>
-          <label>
-            <span>{t("coach.workouts.workoutTitle")}</span>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} disabled={!selected} />
-          </label>
-          <label>
-            <span>{t("coach.workouts.duration")}</span>
-            <Input
-              type="number"
-              min={1}
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              disabled={!selected}
-            />
-          </label>
-          <label>
-            <span>{t("coach.workouts.coachNotes")}</span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              disabled={!selected}
-            />
-          </label>
-          <Button
-            className="mt-3 w-full"
-            variant="outline"
-            onClick={onSaveSettings}
-            disabled={!selected || updateWorkout.isPending}
-          >
-            {updateWorkout.isPending ? t("common.saving") : t("coach.workouts.saveChanges")}
-          </Button>
-          {selected && <AssignWorkoutDialog workoutId={selected.id} />}
-          {selected && (
-            <Button
-              className="mt-3 w-full text-destructive hover:text-destructive"
-              variant="outline"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <Trash2 />
-              {t("coach.workouts.deleteWorkout")}
-            </Button>
-          )}
-        </aside>
-      </div>
-      {selected && (
-        <ConfirmDialog
-          open={confirmDelete}
-          onOpenChange={setConfirmDelete}
-          title={t("coach.workouts.deleteConfirmTitle", { title: selected.title })}
-          description={
-            <>
-              <span className="block">{t("coach.workouts.deleteConfirmBody")}</span>
-              {assignmentCount > 0 && (
-                <span className="block">
-                  {tp("coach.workouts.deleteConfirmAssignments", assignmentCount)}
-                </span>
-              )}
-            </>
-          }
-          confirmLabel={t("coach.workouts.deleteWorkout")}
-          pending={deleteWorkout.isPending}
-          onConfirm={onDelete}
-        />
-      )}
     </>
   );
 }
@@ -1383,9 +936,7 @@ function Videos() {
           ))}
         </div>
       </div>
-      {isLoading && (
-        <p className="p-6 text-sm text-muted-foreground">{t("coach.videos.loading")}</p>
-      )}
+      {isLoading && <DumbbellLoader label={t("coach.videos.loading")} />}
       {!isLoading && videos.length === 0 && (
         <EmptyState>{filtering ? t("coach.videos.noMatches") : t("coach.videos.empty")}</EmptyState>
       )}
@@ -1510,7 +1061,7 @@ function Messages() {
               onChange={(e) => setFilter(e.target.value)}
             />
           </div>
-          {isLoading && <p className="p-4 text-sm text-muted-foreground">{t("common.loading")}</p>}
+          {isLoading && <DumbbellLoader compact />}
           {!isLoading && list.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">{t("coach.messages.empty")}</p>
           )}
@@ -1831,7 +1382,7 @@ function CheckIns() {
         title={t("coach.checkins.title")}
         subtitle={t("coach.checkins.subtitle")}
       />
-      {isLoading && <p className="p-6 text-sm text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <DumbbellLoader />}
       {!isLoading && checkIns.length === 0 && <EmptyState>{t("coach.checkins.empty")}</EmptyState>}
       <div className="checkin-grid">
         {checkIns.map((c) => {

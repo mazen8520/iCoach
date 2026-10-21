@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { MIN_PASSWORD_LENGTH } from "@/lib/account";
 import { useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
+import { EmptyIllustration, type EmptyIcon } from "./gym-visuals";
 
 export function PageHead({
   eyebrow,
@@ -148,9 +149,18 @@ export function SectionTitle({
   );
 }
 /** Empty/loading/error state inside a panel. */
-export function EmptyState({ children, action }: { children: ReactNode; action?: ReactNode }) {
+export function EmptyState({
+  children,
+  action,
+  icon,
+}: {
+  children: ReactNode;
+  action?: ReactNode;
+  icon?: EmptyIcon | undefined;
+}) {
   return (
-    <div className="panel p-10 text-center">
+    <div className="panel empty-state p-10 text-center">
+      <EmptyIllustration icon={icon} />
       <p className="text-sm text-muted-foreground">{children}</p>
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>

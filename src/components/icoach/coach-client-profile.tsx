@@ -26,6 +26,9 @@ import {
 } from "./coach-shared";
 import { EventDialog } from "./coach-schedule";
 import { PlanDialog } from "./coach-nutrition";
+import { GoalsTab } from "./goals";
+import { usePrimaryGoalText } from "@/hooks/use-goals";
+import { DumbbellLoader } from "./gym-visuals";
 import { useClientProfile, useCoachRoster } from "@/hooks/use-clients";
 import {
   useClientAssignmentsForCoach,
@@ -52,6 +55,7 @@ import type { MeetingRow, SleepQuality } from "@/lib/database.types";
 
 export const PROFILE_TABS = [
   "overview",
+  "goals",
   "progress",
   "analysis",
   "workouts",
@@ -64,6 +68,7 @@ export type ProfileTab = (typeof PROFILE_TABS)[number];
 
 const TAB_LABELS: Record<ProfileTab, TranslationKey> = {
   overview: "coach.profile.tab.overview",
+  goals: "coach.profile.tab.goals",
   progress: "coach.profile.tab.progress",
   analysis: "coach.profile.tab.analysis",
   workouts: "coach.profile.tab.workouts",
@@ -86,9 +91,10 @@ export function ClientProfile({ id }: { id: string }) {
   const { data: roster } = useCoachRoster();
   const ensureConversation = useEnsureConversation();
   const stats = roster?.find((x) => x.id === id);
+  const primaryGoal = usePrimaryGoalText(id, profile?.goal);
 
   if (profileLoading) {
-    return <p className="p-6 text-sm text-muted-foreground">{t("coach.profile.loading")}</p>;
+    return <DumbbellLoader label={t("coach.profile.loading")} />;
   }
   if (isError || !profile) {
     return (
@@ -125,7 +131,7 @@ export function ClientProfile({ id }: { id: string }) {
             <p className="eyebrow">{t("coach.profile.eyebrow")}</p>
             <h1 className="page-title">{name}</h1>
             <p className="text-sm text-muted-foreground">
-              {profile.goal || t("common.noGoalSet")} ·{" "}
+              {primaryGoal ?? t("common.noGoalSet")} ·{" "}
               {t("coach.profile.activeSince", {
                 date: profile.joined_at
                   ? fmt.date(profile.joined_at, { month: "short", year: "numeric" })
@@ -193,6 +199,7 @@ export function ClientProfile({ id }: { id: string }) {
       </div>
       <div key={tab} className="animate-enter">
         {tab === "overview" && <OverviewTab id={id} profile={profile} />}
+        {tab === "goals" && <GoalsTab clientId={id} />}
         {tab === "progress" && <ProgressTab id={id} />}
         {tab === "analysis" && <AnalysisTab id={id} />}
         {tab === "workouts" && <WorkoutsTab id={id} />}
@@ -257,6 +264,7 @@ function OverviewTab({
   profile: NonNullable<ReturnType<typeof useClientProfile>["data"]>;
 }) {
   const { t, fmt } = useI18n();
+  const primaryGoal = usePrimaryGoalText(id, profile.goal);
   const { data: entries } = useProgressEntries(id, 30);
   const { data: checkIns } = useClientCheckIns(id);
   const { data: assignments, isLoading } = useClientAssignmentsForCoach(id);
@@ -295,7 +303,7 @@ function OverviewTab({
         : t("common.notProvided"),
     ],
     [t("coach.profile.phone"), profile.phone || t("common.notProvided")],
-    [t("coach.profile.goal"), profile.goal || t("common.noGoalSet")],
+    [t("coach.profile.goal"), primaryGoal ?? t("common.noGoalSet")],
     [
       t("coach.profile.memberSince"),
       fmt.date(profile.joined_at ?? profile.created_at, {
@@ -504,14 +512,21 @@ function AnalysisTab({ id }: { id: string }) {
   ).length;
   const completionPct = due.length ? Math.round((completed / due.length) * 100) : null;
 
-  // Planned meals: the richest active plan's meals per day, since that plan (or 30 days) began.
+  // Planned meals: for each of the last 30 days (since the first active plan began), the
+  // richest active plan's meals on that weekday.
   const activePlans = (plans ?? []).filter((p) => p.is_active);
-  const mealsPerDay = Math.max(0, ...activePlans.map((p) => p.meals.length));
   const planStart = activePlans.length
     ? Math.min(...activePlans.map((p) => new Date(p.created_at).getTime()))
     : null;
   const planDays = planStart ? Math.min(30, daysSince(new Date(planStart).toISOString()) + 1) : 0;
-  const plannedMeals = mealsPerDay * planDays;
+  let plannedMeals = 0;
+  for (let i = 0; i < planDays; i++) {
+    const weekday = addDays(new Date(), -i).getDay();
+    plannedMeals += Math.max(
+      0,
+      ...activePlans.map((p) => p.meals.filter((m) => m.day_of_week === weekday).length),
+    );
+  }
   const loggedMeals = (mealLogs ?? []).filter((l) => l.completed).length;
   const mealPct =
     plannedMeals > 0 ? Math.min(100, Math.round((loggedMeals / plannedMeals) * 100)) : null;
@@ -682,7 +697,7 @@ function WorkoutsTab({ id }: { id: string }) {
           }
         />
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <DumbbellLoader compact />}
       <div className="content-grid">
         <section>
           <SectionTitle title={t("coach.profile.upcoming")} />
@@ -724,7 +739,7 @@ function NutritionTab({ id }: { id: string }) {
         <h2 className="font-display text-xl font-bold">{t("coach.profile.nutritionPlans")}</h2>
         <PlanDialog clientId={id} />
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">{t("common.loading")}</p>}
+      {isLoading && <DumbbellLoader compact />}
       {!isLoading && (plans ?? []).length === 0 && (
         <EmptyState>{t("coach.profile.noPlans")}</EmptyState>
       )}
@@ -741,12 +756,12 @@ function NutritionTab({ id }: { id: string }) {
                   dayType: ["training", "rest", "any"].includes(p.day_type)
                     ? t(`dayType.${p.day_type as "training" | "rest" | "any"}`)
                     : p.day_type,
-                  kcal: p.target_calories,
+                  kcal: p.targets?.target_calories ?? 0,
                 })}
               </small>
               <small className="block">
-                P {p.target_protein_g}g · C {p.target_carbs_g}g · F {p.target_fat_g}g ·{" "}
-                {tp("coach.profile.meals", p.meals.length)}
+                P {p.targets?.target_protein_g ?? 0}g · C {p.targets?.target_carbs_g ?? 0}g · F{" "}
+                {p.targets?.target_fat_g ?? 0}g · {tp("coach.profile.meals", p.meals.length)}
               </small>
             </span>
             <span className="flex flex-col items-end gap-2">
@@ -885,7 +900,7 @@ function ScheduleTab({ id, name }: { id: string; name: string }) {
 function CheckInsTab({ id, name }: { id: string; name: string }) {
   const { t } = useI18n();
   const { data, isLoading } = useClientCheckIns(id);
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t("common.loading")}</p>;
+  if (isLoading) return <DumbbellLoader />;
   if ((data ?? []).length === 0) return <EmptyState>{t("coach.profile.noCheckIns")}</EmptyState>;
   return (
     <div className="checkin-grid">
