@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- iCoach tokens (src/styles.css: --background, --sidebar, --primary). -->
+    <!-- iCoach tokens from src/styles.css: background, sidebar and primary. -->
     <color name="icoach_background">#1B1B1E</color>
     <color name="colorPrimary">#1B1B1E</color>
     <color name="colorPrimaryDark">#17171A</color>
