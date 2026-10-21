@@ -39,6 +39,7 @@ import {
   useMeetingDraftInput,
   type MeetingDraft,
 } from "@/lib/meeting-draft";
+import { copyText } from "@/lib/native";
 
 /** Native <select> styled like the app's inputs (used across dialogs and toolbars). */
 export function FieldSelect({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -406,7 +407,7 @@ export function MeetingDetailsDialog({
   const copyLink = async () => {
     if (!zoomLink) return;
     try {
-      await navigator.clipboard.writeText(zoomLink);
+      await copyText(zoomLink);
       toast.success(t("meeting.linkCopied"));
     } catch {
       toast.error(t("coach.addClient.copyFailed"));

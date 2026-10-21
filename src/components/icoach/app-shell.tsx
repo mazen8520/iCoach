@@ -10,14 +10,16 @@ import {
   MessageSquare,
   MoreHorizontal,
   PlaySquare,
+  Route as RouteIcon,
   Salad,
   Settings,
   TrendingUp,
   UsersRound,
   Video,
+  WifiOff,
   X,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Brand } from "./brand";
 import { LanguageSwitch } from "./language-switch";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,25 @@ import { initialsFromName } from "@/lib/format";
 import { DumbbellLoader } from "./gym-visuals";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import type { NotificationRow } from "@/lib/database.types";
+import { haptic, startAppTour } from "@/lib/native";
+
+function subscribeOnline(onChange: () => void) {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
+/** False while the device has no network. Always true during SSR. */
+function useOnline() {
+  return useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+}
 
 const coachNav = [
   ["/coach/dashboard", "nav.overview", LayoutDashboard],
@@ -107,6 +128,19 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
   const { user, profile, profileError, loading, mustChangePassword, signOut } = useAuth();
   const { notifications, unreadCount, markAllRead, markRead } = useNotifications();
   const notificationTitle = useNotificationTitle();
+  const online = useOnline();
+
+  // Escape (and Android's back button, which sends Escape) closes the open sheet.
+  useEffect(() => {
+    if (!moreOpen && !notices) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setMoreOpen(false);
+      setNotices(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [moreOpen, notices]);
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -161,7 +195,7 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
   const unreadMessages = notifications.filter((n) => n.type === "message" && !n.read_at).length;
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 start-0 z-40 hidden w-60 border-e border-border bg-sidebar lg:flex lg:flex-col">
+      <aside className="app-sidebar fixed inset-y-0 start-0 z-40 hidden w-60 border-e border-border bg-sidebar lg:flex lg:flex-col">
         <div className="flex h-20 items-center px-6">
           <Link to="/">
             <Brand />
@@ -203,7 +237,7 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
           </button>
         </div>
       </aside>
-      <header className="fixed inset-x-0 top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-xl lg:start-60 lg:px-8">
+      <header className="app-header fixed inset-x-0 top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-xl lg:start-60 lg:px-8">
         <div className="lg:hidden">
           <Link to="/">
             <Brand />
@@ -213,10 +247,14 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
           {t(role === "coach" ? "shell.coachTagline" : "shell.athleteTagline")}
         </div>
         <div className="flex items-center gap-2">
-          <LanguageSwitch />
+          <div className="flex" data-tour="language">
+            <LanguageSwitch />
+          </div>
           <button
             className="icon-button relative"
             aria-label={t("shell.notifications")}
+            aria-expanded={notices}
+            data-tour="notifications"
             onClick={() => setNotices(!notices)}
           >
             <Bell size={18} />
@@ -234,8 +272,17 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
           </button>
         </div>
       </header>
+      {!online && (
+        <div className="offline-banner" role="status">
+          <WifiOff size={15} aria-hidden="true" />
+          <span>{t("offline.banner")}</span>
+        </div>
+      )}
       {notices && (
-        <div className="fixed end-4 top-20 z-50 w-[min(390px,calc(100vw-2rem))] panel-elevated animate-slide-in">
+        <div
+          className="notices-panel fixed end-4 z-50 w-[min(390px,calc(100vw-2rem))] panel-elevated animate-slide-in"
+          data-back-dismiss
+        >
           <div className="flex items-center justify-between border-b border-border p-5">
             <div>
               <p className="eyebrow">{t("shell.liveFeed")}</p>
@@ -280,13 +327,18 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
           </div>
         </div>
       )}
-      <main className="min-h-screen min-w-0 overflow-x-clip pt-16 lg:ps-60">
+      <main className="app-main min-h-screen min-w-0 overflow-x-clip lg:ps-60">
         <div key={path} className="page-wrap page-transition">
           {children}
         </div>
       </main>
       {moreOpen && (
-        <div className="mobile-more lg:hidden" role="dialog" aria-label={t("shell.moreNavigation")}>
+        <div
+          className="mobile-more lg:hidden"
+          role="dialog"
+          aria-label={t("shell.moreNavigation")}
+          data-back-dismiss
+        >
           <button
             className="mobile-more-backdrop"
             onClick={() => setMoreOpen(false)}
@@ -318,6 +370,17 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
                   <span>{t(labelKey)}</span>
                 </Link>
               ))}
+              <button
+                type="button"
+                className="mobile-more-tour"
+                onClick={() => {
+                  setMoreOpen(false);
+                  startAppTour();
+                }}
+              >
+                <RouteIcon size={20} />
+                <span>{t("tour.replay")}</span>
+              </button>
             </nav>
             <div className="mobile-more-account">
               <span className="avatar-sm">{initials}</span>
@@ -333,11 +396,13 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
           </div>
         </div>
       )}
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-sidebar/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
+      <nav className="app-tabbar fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border bg-sidebar/95 px-2 pb-[max(.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
         {mobile.map(([to, labelKey, Icon]) => (
           <Link
             key={to}
             to={to}
+            data-tour-nav={to}
+            onClick={() => haptic("selection")}
             className={`mobile-nav ${path.startsWith(to) ? "text-primary" : "text-muted-foreground"}`}
           >
             <Icon size={19} />
@@ -346,9 +411,13 @@ export function AppShell({ role, children }: { role: "coach" | "client"; childre
         ))}
         <button
           className={`mobile-nav ${moreOpen || more.some(([to]) => path.startsWith(to)) ? "text-primary" : "text-muted-foreground"}`}
-          onClick={() => setMoreOpen((open) => !open)}
+          onClick={() => {
+            haptic("selection");
+            setMoreOpen((open) => !open);
+          }}
           aria-expanded={moreOpen}
           aria-label={t("shell.moreNavigation")}
+          data-tour="more"
         >
           <MoreHorizontal size={19} />
           <span>{t("shell.more")}</span>

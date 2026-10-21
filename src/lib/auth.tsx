@@ -13,6 +13,8 @@ import { supabase } from "./supabase";
 import type { Profile, UserRole } from "./database.types";
 import { mustChangePassword as needsPasswordChange } from "./account";
 import { completeRequiredPasswordChange } from "./password.functions";
+import { isNativeApp } from "./native";
+import { clearNativeAuthStorage } from "./native-auth-storage";
 
 type SignInResult = {
   error: string | null;
@@ -59,6 +61,8 @@ function clearStoredSession() {
   } catch {
     // Storage unavailable — nothing persisted to clear.
   }
+  // The iOS/Android app also keeps a copy in native storage.
+  if (isNativeApp()) void clearNativeAuthStorage();
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

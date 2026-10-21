@@ -15,6 +15,7 @@ import {
   type MeetingInput,
 } from "./server/zoom/api";
 import { getValidAccessToken, supabaseConnectionStore, withZoomToken } from "./server/zoom/tokens";
+import { stateFor } from "./server/zoom/app-return";
 import type { MeetingRow } from "./database.types";
 
 function validator<T extends z.ZodTypeAny>(schema: T) {
@@ -106,13 +107,14 @@ export const getZoomStatus = createServerFn({ method: "POST" })
   });
 
 /** Returns the Zoom authorize URL; the browser navigates to it. The one-time state row ties the
- *  callback to this coach (CSRF protection) and carries the PKCE verifier. */
+ *  callback to this coach (CSRF protection) and carries the PKCE verifier. `returnTo: "app"`
+ *  (the mobile app) makes the callback hand the result back through icoach://zoom. */
 export const startZoomConnect = createServerFn({ method: "POST" })
-  .validator(validator(auth))
+  .validator(validator(auth.extend({ returnTo: z.literal("app").optional() })))
   .handler(async ({ data }) => {
     const { coachId } = await requireCoach(data.accessToken);
     const config = zoomConfig();
-    const state = randomUrlToken();
+    const state = stateFor(randomUrlToken(), data.returnTo);
     const codeVerifier = randomUrlToken(48);
     const { error } = await adminClient()
       .from("zoom_oauth_states")

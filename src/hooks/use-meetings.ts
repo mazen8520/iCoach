@@ -8,6 +8,7 @@ import {
   scheduleZoomMeeting,
   updateZoomMeeting,
 } from "@/lib/zoom.functions";
+import { isNativeApp, openExternal } from "@/lib/native";
 
 export type MeetingWithOther = MeetingRow & {
   other: { id: string; full_name: string; avatar_url: string | null } | null;
@@ -106,12 +107,18 @@ export function useCancelMeeting() {
 
 /**
  * Opens the host start link. The tab is opened synchronously on click (so popup blockers allow
- * it) and pointed at the link once the server has fetched a fresh one from Zoom.
+ * it) and pointed at the link once the server has fetched a fresh one from Zoom. The mobile app
+ * hands the link to the system instead, which opens the Zoom app.
  */
 export function useStartMeeting() {
   const token = useAccessToken();
   return useMutation({
     mutationFn: async (meetingId: string) => {
+      if (isNativeApp()) {
+        const { url } = await getZoomStartUrl({ data: { accessToken: token(), meetingId } });
+        await openExternal(url);
+        return;
+      }
       const tab = window.open("", "_blank");
       try {
         const { url } = await getZoomStartUrl({ data: { accessToken: token(), meetingId } });

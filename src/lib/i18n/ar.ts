@@ -1,5 +1,6 @@
 import type { TranslationKey } from "./en";
 import { arFeatures } from "./ar-features";
+import { arMobile } from "./ar-mobile";
 
 // Arabic strings. Typed against the English keys, so a missing translation fails the build.
 // Plural keys may also define Arabic-specific forms (`_zero`, `_two`, `_few`, `_many`) —
@@ -1133,4 +1134,5 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "client.checkins.submit": "إرسال المتابعة الأسبوعية",
   "client.checkins.submitting": "جارٍ الإرسال...",
   ...arFeatures,
+  ...arMobile,
 };

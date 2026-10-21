@@ -2,11 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { adminClient } from "@/lib/server/supabase";
 import { ZoomError, exchangeCode, getMe, zoomConfig } from "@/lib/server/zoom/api";
 import { saveConnection, supabaseConnectionStore } from "@/lib/server/zoom/tokens";
+import { appReturnPage, isAppState } from "@/lib/server/zoom/app-return";
 
 /** How long a Connect Zoom attempt stays valid. */
 const STATE_TTL_MS = 10 * 60_000;
 
-function backToSettings(redirectUri: string, result: string) {
+function backToSettings(redirectUri: string, result: string, fromApp = false) {
+  // Started in the mobile app's in-app browser: hand the result back to the app instead.
+  if (fromApp) return appReturnPage(result);
   // Build from the configured redirect URI's origin, never from request headers.
   const url = new URL("/coach/settings", redirectUri);
   url.searchParams.set("tab", "integrations");
@@ -28,12 +31,13 @@ export const Route = createFileRoute("/api/zoom/callback")({
         const params = new URL(request.url).searchParams;
         const code = params.get("code");
         const state = params.get("state");
-        if (params.get("error")) return backToSettings(config.redirectUri, "denied");
+        const fromApp = isAppState(state);
+        if (params.get("error")) return backToSettings(config.redirectUri, "denied", fromApp);
         // Installed from Zoom's side (Marketplace / "Add app"): there is no state to tell us which
         // iCoach coach this is, and accepting it would let anyone attach their Zoom account to
         // whoever opens the link (OAuth CSRF). The coach finishes with Connect Zoom in iCoach.
         if (code && !state) return backToSettings(config.redirectUri, "install");
-        if (!code || !state) return backToSettings(config.redirectUri, "error");
+        if (!code || !state) return backToSettings(config.redirectUri, "error", fromApp);
 
         const admin = adminClient();
         // Consume the state: single use, so a replayed callback URL does nothing.
@@ -43,9 +47,9 @@ export const Route = createFileRoute("/api/zoom/callback")({
           .eq("state", state)
           .select("coach_id, code_verifier, created_at");
         const pending = rows?.[0];
-        if (error || !pending) return backToSettings(config.redirectUri, "error");
+        if (error || !pending) return backToSettings(config.redirectUri, "error", fromApp);
         if (Date.now() - new Date(pending.created_at as string).getTime() > STATE_TTL_MS) {
-          return backToSettings(config.redirectUri, "expired");
+          return backToSettings(config.redirectUri, "expired", fromApp);
         }
 
         try {
@@ -63,7 +67,7 @@ export const Route = createFileRoute("/api/zoom/callback")({
             "Zoom connect failed:",
             err instanceof ZoomError ? `${err.code} ${err.status ?? ""}` : "storage error",
           );
-          return backToSettings(config.redirectUri, "error");
+          return backToSettings(config.redirectUri, "error", fromApp);
         } finally {
           // Housekeeping: abandoned attempts.
           await admin
@@ -72,7 +76,7 @@ export const Route = createFileRoute("/api/zoom/callback")({
             .lt("created_at", new Date(Date.now() - STATE_TTL_MS).toISOString());
         }
 
-        return backToSettings(config.redirectUri, "connected");
+        return backToSettings(config.redirectUri, "connected", fromApp);
       },
     },
   },

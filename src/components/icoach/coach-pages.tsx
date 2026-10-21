@@ -102,6 +102,7 @@ import {
 import { initialsFromName, isHttpUrl, isoDate, parseIsoDate } from "@/lib/format";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
+import { copyText } from "@/lib/native";
 
 export function CoachPage({ page, clientId }: { page: string; clientId?: string }) {
   return (
@@ -437,7 +438,7 @@ function AddClientDialog() {
   const copyCredentials = async () => {
     if (!created) return;
     try {
-      await navigator.clipboard.writeText(
+      await copyText(
         t("coach.addClient.credentialsText", {
           email: created.email,
           password: created.temporaryPassword,

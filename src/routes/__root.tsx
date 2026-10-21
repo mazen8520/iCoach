@@ -13,6 +13,8 @@ import { type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth";
 import { Toaster } from "@/components/ui/sonner";
+import { AppTour } from "@/components/icoach/app-tour";
+import { NativeBridge } from "@/components/icoach/native-bridge";
 import { LanguageProvider, dirFor, pageMeta, translate, useI18n } from "@/lib/i18n";
 import { getPersistedLang, type Lang } from "@/lib/i18n/lang-cookie";
 
@@ -88,9 +90,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: ({ match }) => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // viewport-fit=cover lets the app shells and home-screen installs draw under the status
+      // bar and home indicator; every edge that matters pads itself with env(safe-area-inset-*).
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       ...pageMeta(match.context.lang, "meta.appTitle").meta,
       { name: "author", content: "iCoach" },
+      { name: "theme-color", content: "#1b1b1e" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: "iCoach" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
     ],
     links: [
       // The faces styles.css names (--font-sans / --font-display); without these the app fell
@@ -106,6 +115,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+      { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -136,6 +147,8 @@ function LocalizedToaster() {
       dir={dir}
       position={dir === "rtl" ? "bottom-left" : "bottom-right"}
       containerAriaLabel={t("shell.notifications")}
+      // On phones, clear the bottom tab bar and the home indicator.
+      mobileOffset={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
     />
   );
 }
@@ -150,6 +163,9 @@ function RootComponent() {
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
           <LocalizedToaster />
+          {/* Mobile app: first-run tour (outlives route changes) and native behaviour. */}
+          <AppTour />
+          <NativeBridge />
         </AuthProvider>
       </LanguageProvider>
     </QueryClientProvider>

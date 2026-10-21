@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+import { isNativeApp } from "./native";
+import { nativeAuthStorage } from "./native-auth-storage";
 
 const url = import.meta.env["VITE_SUPABASE_URL"];
 const publishableKey = import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
@@ -19,5 +21,7 @@ export const supabase = createClient(url, publishableKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    // The iOS/Android app keeps the session in native storage the OS never clears.
+    ...(isNativeApp() ? { storage: nativeAuthStorage } : {}),
   },
 });

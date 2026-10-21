@@ -1,4 +1,5 @@
 import { enFeatures } from "./en-features";
+import { enMobile } from "./en-mobile";
 
 // English strings — the source of truth for every user-facing text in iCoach.
 // Keys are grouped by area. `{name}` placeholders are interpolated by `t()`; keys ending in
@@ -1142,6 +1143,7 @@ export const en = {
   ...settings,
   ...clientPages,
   ...enFeatures,
+  ...enMobile,
 };
 
 export type TranslationKey = keyof typeof en;
