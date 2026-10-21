@@ -39,3 +39,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Mobile test builds downloaded from GitHub releases
+mobile/builds/
