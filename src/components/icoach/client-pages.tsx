@@ -12,7 +12,6 @@ import {
   HeartPulse,
   Moon,
   Play,
-  Plus,
   Send,
   Timer,
   Utensils,
@@ -1638,9 +1637,6 @@ function Messages() {
           ))}
         </div>
         <form className="chat-input" onSubmit={onSubmit}>
-          <button className="icon-button" type="button">
-            <Plus />
-          </button>
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}

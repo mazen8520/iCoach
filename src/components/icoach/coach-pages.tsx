@@ -1122,9 +1122,6 @@ function Messages() {
                 ))}
               </div>
               <form className="chat-input" onSubmit={onSubmit}>
-                <button type="button" className="icon-button">
-                  <Plus />
-                </button>
                 <Input
                   value={text}
                   onChange={(e) => setText(e.target.value)}
