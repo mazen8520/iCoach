@@ -9,10 +9,11 @@ node_modules
 .nitro
 dist
 # Native mobile projects and their sources: built by .github/workflows/mobile-apps.yml, not Vercel.
-android
-ios
-mobile
-assets
+# Anchored to the root: a bare "assets" would also drop src/assets (the app's photos).
+/android
+/ios
+/mobile
+/assets
 # Local tool settings
-.claude
-.impeccable
+/.claude
+/.impeccable
