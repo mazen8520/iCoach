@@ -108,3 +108,21 @@ These builds are for testing. For Google Play and the App Store:
   Apple's guideline 4.2 rejects apps that are only a website. The app's native features count in its
   favour (native session storage, Zoom app hand-off, haptics, back gestures, offline screen,
   in-app browser). Push notifications would make the case stronger and are the natural next feature.
+
+## Linking the download buttons on the website
+
+The home page shows **Download on the App Store** and **Get it on Google Play** buttons (in the hero,
+the "Get the app" section and the footer). Until a listing exists they say **Coming soon**, and
+pressing one explains how to use iCoach in the phone's browser meanwhile.
+
+When an app is live, give the website its store link:
+
+1. In Vercel, open the **i-coach** project → **Settings → Environment Variables**.
+2. Add `VITE_APP_STORE_URL` (for example `https://apps.apple.com/app/icoach/id0000000000`) and/or
+   `VITE_PLAY_STORE_URL` (for example
+   `https://play.google.com/store/apps/details?id=com.icoach.performance`) for **Production**.
+3. Redeploy. The button switches to a real link and the "Coming soon" label disappears.
+
+You can also put the URLs straight into `src/lib/app-links.ts`. Apple and Google publish official
+badge artwork; if you'd like their exact badges instead of the iCoach-styled buttons, swap the
+artwork in `src/components/icoach/store-buttons.tsx`.

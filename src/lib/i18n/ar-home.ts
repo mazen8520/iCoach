@@ -1,0 +1,105 @@
+import type { enHome } from "./en-home";
+
+// Arabic for en-home.ts. Typed against the English keys, so a missing translation fails the build.
+export const arHome: Record<keyof typeof enHome, string> & Record<string, string> = {
+  // navigation
+  "home.nav.services": "الخدمات",
+  "home.nav.benefits": "المزايا",
+  "home.nav.how": "كيف يعمل",
+  "home.nav.app": "حمّل التطبيق",
+  "home.nav.start": "ابدأ الآن",
+  "home.nav.label": "أقسام الصفحة الرئيسية",
+  // hero
+  "home.hero.platforms": "الويب وiPhone وAndroid. حساب واحد والخطة نفسها في كل مكان.",
+  "home.chip.set": "المجموعة 3 من 4 · 80 كغ × 8",
+  "home.chip.rest": "راحة",
+  "home.chip.checkin": "أُرسلت المتابعة إلى المدرب",
+  "home.example": "مثال",
+  // app stores
+  "store.ios.top": "حمّله من",
+  "store.ios.name": "App Store",
+  "store.android.top": "احصل عليه من",
+  "store.android.name": "Google Play",
+  "store.soon": "قريبًا",
+  "store.soon.ios":
+    "تطبيق iPhone في الطريق. حتى ذلك الحين يعمل iCoach في Safari: سجّل الدخول ثم مشاركة ← إضافة إلى الشاشة الرئيسية.",
+  "store.soon.android":
+    "تطبيق Android في الطريق. حتى ذلك الحين يعمل iCoach في متصفح Chrome على هاتفك.",
+  "store.label": "حمّل تطبيق iCoach",
+  // services
+  "home.pillar.train": "تمرّن",
+  "home.pillar.fuel": "تغذَّ",
+  "home.pillar.track": "تابِع",
+  "home.pillar.connect": "تواصَل",
+  "home.train.title": "برامج مفصّلة حتى آخر مجموعة",
+  "home.train.body":
+    "أنشئ التمارين من مكتبة تمارين مزوّدة بالفيديو وعيّنها لأي تاريخ. يسجّل المتدرب كل مجموعة بينما يضبط مؤقت الراحة الإيقاع.",
+  "home.train.1": "تكرارات أو نطاقات أو AMRAP؛ كغ أو رطل أو نسبة من 1RM",
+  "home.train.2": "الإيقاع وRPE والمجموعات المتتالية والراحة لكل مجموعة",
+  "home.train.3": "مكتبة تمارين وفيديوهات تكبر معك",
+  "home.fuel.title": "تغذية مخططة يومًا بيوم",
+  "home.fuel.body":
+    "خطط لأيام التمرين وأيام الراحة، وبدائل للأطعمة وقوالب تعيد استخدامها. يؤشّر المتدرب على وجباته دون حساب سعرة واحدة.",
+  "home.fuel.1": "خطط أسبوعية من السبت إلى الجمعة",
+  "home.fuel.2": "بدائل وقوالب تعيد استخدامها",
+  "home.fuel.3": "عادات يومية بجانب كل وجبة",
+  "home.track.title": "تقدّم تراه بعينك",
+  "home.track.body":
+    "الوزن والأرقام القياسية والأهداف في عرض واحد، مع متابعات أسبوعية وصور تقدم تصل مباشرة إلى المدرب.",
+  "home.track.1": "أهداف بأرقام مستهدفة ومواعيد نهائية",
+  "home.track.2": "الأرقام القياسية واتجاهات الوزن",
+  "home.track.3": "متابعات أسبوعية بالصور",
+  "home.connect.title": "تدريب يبقى على تواصل",
+  "home.connect.body":
+    "رسائل فورية وإشعارات لحظية وجلسات Zoom تُجدول من التقويم نفسه. كل ما يحتاجه المتدرب هو زر الانضمام.",
+  "home.connect.1": "رسائل وإشعارات في الوقت الفعلي",
+  "home.connect.2": "مكالمات Zoom تُنشأ من داخل iCoach",
+  "home.connect.3": "تقويم واحد للجلسات والفعاليات",
+  // product scenes (illustrative)
+  "home.scene.squat": "سكوات خلفي",
+  "home.scene.setRow": "المجموعة {n}",
+  "home.scene.restTimer": "مؤقت الراحة",
+  "home.scene.trainingDay": "يوم تمرين",
+  "home.scene.breakfast": "الإفطار · شوفان وتوت",
+  "home.scene.lunch": "الغداء · دجاج وأرز",
+  "home.scene.dinner": "العشاء · سلمون وخضار",
+  "home.scene.water": "ماء · 3 لتر",
+  "home.scene.weight": "وزن الجسم",
+  "home.scene.weightDelta": "−4.2 كغ خلال 8 أسابيع",
+  "home.scene.pr": "رقم قياسي جديد · رفعة ميتة 160 كغ",
+  "home.scene.coachMsg": "جلسة قوية. أضف 2.5 كغ إلى السكوات الأسبوع القادم.",
+  "home.scene.athleteMsg": "تم. شعرت بالسرعة اليوم.",
+  "home.scene.meeting": "المراجعة الأسبوعية · Zoom",
+  "home.scene.meetingTime": "الخميس · 18:00",
+  "home.scene.join": "انضم",
+  "home.scene.bench": "ضغط الصدر · 4 × 8",
+  "home.scene.pullups": "العقلة · 3 × 10",
+  "home.scene.upper": "الجزء العلوي",
+  // benefits
+  "home.benefits.title": "صُمّم لطرفي الخطة",
+  "home.benefits.coach.1": "متدربوك كلهم في لمحة: من تمرّن، ومن تراجع، وما يحتاجك اليوم.",
+  "home.benefits.coach.2": "صمّم البرنامج مرة، ثم عيّنه لأي متدرب وفي أي تاريخ.",
+  "home.benefits.coach.3": "اكتشف المتدربين الذين يبتعدون قبل أن يتوقفوا.",
+  "home.benefits.coach.4": "أضف المتدربين في ثوانٍ، ويحصل كل منهم على حسابه الخاص.",
+  "home.benefits.coach.5": "أدِر المكالمات عبر حساب Zoom الخاص بك دون مغادرة iCoach.",
+  "home.benefits.athlete.1": "افتح «اليوم» واعرف بالضبط ما عليك فعله.",
+  "home.benefits.athlete.2": "سجّل مجموعاتك في ثوانٍ بينما يعمل مؤقت الراحة.",
+  "home.benefits.athlete.3": "الوجبات والعادات في قائمة بسيطة.",
+  "home.benefits.athlete.4": "أرسل المتابعات وصور التقدم بلمسة.",
+  "home.benefits.athlete.5": "راسل مدربك في أي وقت وانضم إلى المكالمات من تقويمك.",
+  // how it works
+  "home.how.title": "من التسجيل إلى أول جلسة",
+  "home.how.1.title": "أنشئ حساب المدرب",
+  "home.how.1.body": "سجّل في دقيقة واحدة، وتصبح مساحة عملك التدريبية جاهزة فورًا.",
+  "home.how.2.title": "أضف المتدربين وابنِ الخطة",
+  "home.how.2.body": "أنشئ حساب كل متدرب، ثم عيّن التمارين والوجبات والأهداف.",
+  "home.how.3.title": "تمرّن، تابِع، عدّل",
+  "home.how.3.body": "يتابع المتدربون «اليوم» على أي جهاز، وترى كل مجموعة ومتابعة لحظة حدوثها.",
+  // app
+  "home.app.title": "مدربك في جيبك",
+  "home.app.body":
+    "يأخذ تطبيق iCoach لأجهزة iPhone وAndroid «اليوم» والتمارين والوجبات والرسائل معك إلى صالة التدريب، بالحساب والبيانات نفسها التي على الويب.",
+  "home.app.1": "الحساب والبيانات نفسها على كل جهاز",
+  "home.app.2": "جولة إرشادية عند أول تشغيل",
+  "home.app.3": "الإنجليزية والعربية، مع دعم الاتجاه من اليمين إلى اليسار",
+};

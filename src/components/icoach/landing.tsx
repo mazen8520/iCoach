@@ -5,22 +5,29 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowUpRight,
   CalendarCheck2,
+  CalendarDays,
+  Camera,
+  Check,
+  CheckCircle2,
   ChevronRight,
   Dumbbell,
-  MessagesSquare,
+  LayoutDashboard,
+  MoreHorizontal,
   MoveRight,
-  Salad,
-  Target,
   Timer,
+  Trophy,
+  Video,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Brand } from "./brand";
 import { LanguageSwitch } from "./language-switch";
+import { StoreButtons } from "./store-buttons";
 import { Button } from "@/components/ui/button";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { usePlatformStats } from "@/hooks/use-platform-stats";
 import { PLACEHOLDER_STATS } from "@/lib/landing-stats";
-import hero from "@/assets/icoach-hero-man.jpg";
+import coachPhoto from "@/assets/workout-battle-rope.jpg";
+import athletePhoto from "@/assets/workout-runner.jpg";
 
 function prefersReducedMotion() {
   return (
@@ -28,27 +35,45 @@ function prefersReducedMotion() {
   );
 }
 
-/** Arms scroll reveals for everything marked data-reveal under the root. */
+/** Arms scroll reveals for everything marked data-reveal under the root. An IntersectionObserver
+ *  does the work; a light scroll check backs it up so no section can stay hidden if the
+ *  observer is slow to report (e.g. right after a tab regains focus). */
 function useScrollReveal() {
   const root = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = root.current;
     if (!el || typeof IntersectionObserver === "undefined" || prefersReducedMotion()) return;
-    const targets = Array.from(el.querySelectorAll<HTMLElement>("[data-reveal]"));
+    const pending = new Set(el.querySelectorAll<HTMLElement>("[data-reveal]"));
     el.classList.add("reveal-armed");
+    const reveal = (target: HTMLElement) => {
+      target.dataset["reveal"] = "in";
+      pending.delete(target);
+      observer.unobserve(target);
+    };
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            (entry.target as HTMLElement).dataset["reveal"] = "in";
-            observer.unobserve(entry.target);
-          }
+          if (entry.isIntersecting) reveal(entry.target as HTMLElement);
         }
       },
       { rootMargin: "0px 0px -12% 0px", threshold: 0.12 },
     );
-    targets.forEach((t) => observer.observe(t));
-    return () => observer.disconnect();
+    pending.forEach((t) => observer.observe(t));
+    const check = () => {
+      const fold = window.innerHeight * 0.92;
+      for (const target of pending) {
+        const r = target.getBoundingClientRect();
+        if (r.top < fold && r.bottom > 0) reveal(target);
+      }
+      if (pending.size === 0) window.removeEventListener("scroll", check);
+    };
+    window.addEventListener("scroll", check, { passive: true });
+    const settle = window.setTimeout(check, 1200);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", check);
+      window.clearTimeout(settle);
+    };
   }, []);
   return root;
 }
@@ -223,21 +248,251 @@ function GymStage() {
   );
 }
 
-const FEATURES: { icon: ReactNode; title: TranslationKey; body: TranslationKey }[] = [
+type Pillar = {
+  id: "train" | "fuel" | "track" | "connect";
+  word: TranslationKey;
+  title: TranslationKey;
+  body: TranslationKey;
+  points: TranslationKey[];
+  scene: () => ReactNode;
+};
+
+const PILLARS: Pillar[] = [
   {
-    icon: <Dumbbell />,
-    title: "landing.feature.program.title",
-    body: "landing.feature.program.body",
+    id: "train",
+    word: "home.pillar.train",
+    title: "home.train.title",
+    body: "home.train.body",
+    points: ["home.train.1", "home.train.2", "home.train.3"],
+    scene: () => <TrainScene />,
   },
-  { icon: <Timer />, title: "landing.feature.rest.title", body: "landing.feature.rest.body" },
-  { icon: <Salad />, title: "landing.feature.meals.title", body: "landing.feature.meals.body" },
-  { icon: <Target />, title: "landing.feature.goals.title", body: "landing.feature.goals.body" },
   {
-    icon: <MessagesSquare />,
-    title: "landing.feature.connect.title",
-    body: "landing.feature.connect.body",
+    id: "fuel",
+    word: "home.pillar.fuel",
+    title: "home.fuel.title",
+    body: "home.fuel.body",
+    points: ["home.fuel.1", "home.fuel.2", "home.fuel.3"],
+    scene: () => <FuelScene />,
+  },
+  {
+    id: "track",
+    word: "home.pillar.track",
+    title: "home.track.title",
+    body: "home.track.body",
+    points: ["home.track.1", "home.track.2", "home.track.3"],
+    scene: () => <TrackScene />,
+  },
+  {
+    id: "connect",
+    word: "home.pillar.connect",
+    title: "home.connect.title",
+    body: "home.connect.body",
+    points: ["home.connect.1", "home.connect.2", "home.connect.3"],
+    scene: () => <ConnectScene />,
   },
 ];
+
+const COACH_BENEFITS: TranslationKey[] = [
+  "home.benefits.coach.1",
+  "home.benefits.coach.2",
+  "home.benefits.coach.3",
+  "home.benefits.coach.4",
+  "home.benefits.coach.5",
+];
+const ATHLETE_BENEFITS: TranslationKey[] = [
+  "home.benefits.athlete.1",
+  "home.benefits.athlete.2",
+  "home.benefits.athlete.3",
+  "home.benefits.athlete.4",
+  "home.benefits.athlete.5",
+];
+const STEPS = [
+  ["home.how.1.title", "home.how.1.body"],
+  ["home.how.2.title", "home.how.2.body"],
+  ["home.how.3.title", "home.how.3.body"],
+] as const satisfies readonly (readonly [TranslationKey, TranslationKey])[];
+
+/** Delay for a staggered reveal, in steps of 80ms. */
+const stagger = (step: number) => ({ "--d": `${step * 80}ms` }) as CSSProperties;
+
+// ---------------------------------------------------------------------------------------------
+// Product scenes: small, labelled examples of the real screens, animated when they scroll in.
+// ---------------------------------------------------------------------------------------------
+
+function TrainScene() {
+  const { t } = useI18n();
+  const sets = ["done", "done", "now", "next"] as const;
+  return (
+    <div className="scene-card">
+      <div className="scene-head">
+        <b>{t("home.scene.squat")}</b>
+        <span className="scene-pill">4 × 8</span>
+      </div>
+      <ol className="scene-sets">
+        {sets.map((state, i) => (
+          <li key={i} className={state} style={stagger(i)}>
+            <span className="scene-set-no">{i + 1}</span>
+            <span>{t("home.scene.setRow", { n: i + 1 })}</span>
+            <span className="scene-load">80 kg × 8</span>
+            <span className="scene-check" aria-hidden="true">
+              <Check />
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="scene-rest">
+        <svg viewBox="0 0 44 44" aria-hidden="true">
+          <circle className="scene-rest-track" cx="22" cy="22" r="18" />
+          <circle className="scene-rest-ring" cx="22" cy="22" r="18" pathLength={100} />
+        </svg>
+        <span>
+          <small>{t("home.scene.restTimer")}</small>
+          <b>01:30</b>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function FuelScene() {
+  const { t } = useI18n();
+  const meals: TranslationKey[] = [
+    "home.scene.breakfast",
+    "home.scene.lunch",
+    "home.scene.dinner",
+    "home.scene.water",
+  ];
+  return (
+    <div className="scene-card">
+      <div className="scene-head">
+        <b>{t("home.scene.trainingDay")}</b>
+        <span className="scene-pill">2,450 kcal</span>
+      </div>
+      <ul className="scene-meals">
+        {meals.map((key, i) => (
+          <li key={key} className={i < 3 ? "done" : ""} style={stagger(i)}>
+            <span className="scene-tick" aria-hidden="true">
+              <Check />
+            </span>
+            <span>{t(key)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="scene-macros" aria-hidden="true">
+        <span style={{ "--w": "34%" } as CSSProperties} />
+        <span style={{ "--w": "46%" } as CSSProperties} />
+        <span style={{ "--w": "20%" } as CSSProperties} />
+      </div>
+    </div>
+  );
+}
+
+function TrackScene() {
+  const { t } = useI18n();
+  return (
+    <div className="scene-card">
+      <div className="scene-head">
+        <b>{t("home.scene.weight")}</b>
+        <span className="scene-pill accent">{t("home.scene.weightDelta")}</span>
+      </div>
+      <svg className="scene-chart" viewBox="0 0 300 120" aria-hidden="true">
+        <path className="scene-chart-grid" d="M0 30 H300 M0 60 H300 M0 90 H300" />
+        <path
+          className="scene-chart-area"
+          d="M0 26 L40 34 L80 31 L120 48 L160 52 L200 70 L240 74 L300 92 L300 120 L0 120 Z"
+        />
+        <path
+          className="scene-chart-line"
+          pathLength={100}
+          d="M0 26 L40 34 L80 31 L120 48 L160 52 L200 70 L240 74 L300 92"
+        />
+        <circle className="scene-chart-dot" cx="300" cy="92" r="5" />
+      </svg>
+      <div className="scene-pr">
+        <Trophy aria-hidden="true" />
+        <span>{t("home.scene.pr")}</span>
+      </div>
+    </div>
+  );
+}
+
+function ConnectScene() {
+  const { t } = useI18n();
+  return (
+    <div className="scene-card">
+      <div className="scene-chat">
+        <p className="from-coach" style={stagger(0)}>
+          {t("home.scene.coachMsg")}
+        </p>
+        <p className="from-athlete" style={stagger(2)}>
+          {t("home.scene.athleteMsg")}
+        </p>
+      </div>
+      <div className="scene-meeting" style={stagger(4)}>
+        <span className="scene-meeting-icon" aria-hidden="true">
+          <Video />
+        </span>
+        <span className="min-w-0 flex-1">
+          <b>{t("home.scene.meeting")}</b>
+          <small>{t("home.scene.meetingTime")}</small>
+        </span>
+        <span className="scene-join" aria-hidden="true">
+          {t("home.scene.join")}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The athlete's Today screen in a phone frame. */
+function PhoneScene() {
+  const { t } = useI18n();
+  const rows: [TranslationKey, boolean][] = [
+    ["home.scene.bench", true],
+    ["home.scene.pullups", true],
+    ["home.scene.lunch", false],
+  ];
+  return (
+    <div className="phone" aria-hidden="true">
+      <div className="phone-screen">
+        <div className="phone-notch" />
+        <div className="phone-top">
+          <Brand compact />
+          <span>{t("nav.today")}</span>
+        </div>
+        <div className="phone-hero">
+          <svg viewBox="0 0 64 64">
+            <circle className="phone-ring-track" cx="32" cy="32" r="26" />
+            <circle className="phone-ring" cx="32" cy="32" r="26" pathLength={100} />
+          </svg>
+          <span>
+            <small>{t("home.scene.upper")}</small>
+            <b>67%</b>
+          </span>
+        </div>
+        <ul className="phone-rows">
+          {rows.map(([key, done], i) => (
+            <li key={key} className={done ? "done" : ""} style={stagger(i + 2)}>
+              <span className="scene-tick">
+                <Check />
+              </span>
+              <span>{t(key)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="phone-tabs">
+          <LayoutDashboard />
+          <CheckCircle2 className="active" />
+          <CalendarDays />
+          <Dumbbell />
+          <MoreHorizontal />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
 
 export function Landing() {
   const { t, fmt } = useI18n();
@@ -250,19 +505,28 @@ export function Landing() {
 
   return (
     <main className="landing-v2" ref={root}>
+      <div className="landing-progress" aria-hidden="true" />
       <header className="landing-nav">
-        <Brand />
-        <span className="hidden text-xs font-bold uppercase tracking-[.18em] text-muted-foreground md:block">
-          {t("landing.builtFor")}
-        </span>
-        <div className="flex items-center gap-2">
+        <Link to="/" aria-label="iCoach">
+          <Brand />
+        </Link>
+        <nav className="landing-links" aria-label={t("home.nav.label")}>
+          <a href="#services">{t("home.nav.services")}</a>
+          <a href="#benefits">{t("home.nav.benefits")}</a>
+          <a href="#how">{t("home.nav.how")}</a>
+          <a href="#app">{t("home.nav.app")}</a>
+        </nav>
+        <div className="landing-nav-actions">
           <LanguageSwitch />
           {/* Signing in (or being signed in already) decides which dashboard opens. */}
-          <Link to="/sign-in">
-            <Button variant="outline" size="sm">
-              {t("landing.enter")} <ArrowUpRight />
-            </Button>
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link to="/sign-in">{t("auth.signIn")}</Link>
+          </Button>
+          <Button asChild size="sm" className="landing-nav-start">
+            <Link to="/sign-up">
+              {t("home.nav.start")} <ArrowUpRight />
+            </Link>
+          </Button>
         </div>
       </header>
 
@@ -274,20 +538,38 @@ export function Landing() {
           </h1>
           <p className="landing-description">{t("landing.description")}</p>
           <div className="landing-actions">
-            <Link to="/sign-in" search={{ as: "athlete" }}>
-              <Button size="lg" className="cta-primary">
+            <Button asChild size="lg" className="cta-primary">
+              <Link to="/sign-in" search={{ as: "athlete" }}>
                 {t("landing.athlete")} <MoveRight />
-              </Button>
-            </Link>
-            <Link to="/sign-in" search={{ as: "coach" }}>
-              <Button variant="outline" size="lg">
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link to="/sign-in" search={{ as: "coach" }}>
                 {t("landing.coach")} <ChevronRight />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
+          </div>
+          <div className="landing-hero-apps">
+            <StoreButtons compact />
+            <p>{t("home.hero.platforms")}</p>
           </div>
         </div>
         <div className="landing-hero-stage">
           <GymStage />
+          <div className="hero-chip chip-set" aria-hidden="true">
+            <span className="hero-chip-check">
+              <Check />
+            </span>
+            {t("home.chip.set")}
+          </div>
+          <div className="hero-chip chip-rest" aria-hidden="true">
+            <Timer />
+            {t("home.chip.rest")} <b>01:30</b>
+          </div>
+          <div className="hero-chip chip-checkin" aria-hidden="true">
+            <Camera />
+            {t("home.chip.checkin")}
+          </div>
         </div>
       </section>
 
@@ -299,12 +581,7 @@ export function Landing() {
             ["programs_created", "landing.stats.programs", <Timer key="p" />],
           ] as const
         ).map(([key, label, icon], i) => (
-          <div
-            key={key}
-            className="landing-stat"
-            data-reveal
-            style={{ transitionDelay: `${i * 90}ms` }}
-          >
+          <div key={key} className="landing-stat" data-reveal style={stagger(i)}>
             <span className="landing-stat-icon" aria-hidden="true">
               {icon}
             </span>
@@ -323,71 +600,161 @@ export function Landing() {
         {sample && <p className="landing-stats-note">{t("landing.stats.sample")}</p>}
       </section>
 
-      <section className="landing-features">
-        <div className="landing-features-head" data-reveal>
+      <section id="services" className="landing-services">
+        <div className="landing-section-head" data-reveal>
           <h2>{t("landing.features.title")}</h2>
           <p>{t("landing.features.body")}</p>
         </div>
-        <ul>
-          {FEATURES.map((f, i) => (
-            <li key={f.title} data-reveal style={{ transitionDelay: `${(i % 3) * 70}ms` }}>
-              <span className="feature-icon" aria-hidden="true">
-                {f.icon}
+        {PILLARS.map((pillar, i) => (
+          <article key={pillar.id} className={`pillar ${i % 2 ? "flip" : ""}`}>
+            <div className="pillar-copy" data-reveal data-from={i % 2 ? "end" : "start"}>
+              <h3>{t(pillar.title)}</h3>
+              <p>{t(pillar.body)}</p>
+              <ul>
+                {pillar.points.map((key, n) => (
+                  <li key={key} style={stagger(n + 2)}>
+                    <Check aria-hidden="true" />
+                    {t(key)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="pillar-scene" data-reveal data-from="rise">
+              <span className="pillar-word" aria-hidden="true">
+                {t(pillar.word)}
               </span>
-              <div>
-                <h3>{t(f.title)}</h3>
-                <p>{t(f.body)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+              <span className="scene-tag">{t("home.example")}</span>
+              {pillar.scene()}
+            </div>
+          </article>
+        ))}
       </section>
 
-      <section className="landing-split">
-        <div className="landing-split-image" data-reveal>
-          <img src={hero} width={1920} height={1280} loading="lazy" alt={t("landing.heroAlt")} />
+      <section id="benefits" className="landing-benefits">
+        <div className="landing-section-head centered" data-reveal>
+          <h2>{t("home.benefits.title")}</h2>
         </div>
-        <div className="landing-split-copy">
-          <article data-reveal>
-            <h2>{t("landing.coaches.title")}</h2>
-            <p>{t("landing.coaches.body")}</p>
-            <Link to="/sign-up">
-              <Button>
-                {t("landing.coaches.cta")} <MoveRight />
+        <div className="benefit-columns">
+          <article className="benefit coach" data-reveal data-from="start">
+            <img src={coachPhoto} width={1600} height={912} loading="lazy" alt="" />
+            <div className="benefit-body">
+              <h3>{t("landing.coaches.title")}</h3>
+              <p>{t("landing.coaches.body")}</p>
+              <ul>
+                {COACH_BENEFITS.map((key, n) => (
+                  <li key={key} style={stagger(n + 1)}>
+                    <Check aria-hidden="true" />
+                    {t(key)}
+                  </li>
+                ))}
+              </ul>
+              <Button asChild className="cta-primary">
+                <Link to="/sign-up">
+                  {t("landing.coaches.cta")} <MoveRight />
+                </Link>
               </Button>
-            </Link>
+            </div>
           </article>
-          <article data-reveal>
-            <h2>{t("landing.athletes.title")}</h2>
-            <p>{t("landing.athletes.body")}</p>
-            <Link to="/sign-in" search={{ as: "athlete" }}>
-              <Button variant="outline">
-                {t("landing.athletes.cta")} <ChevronRight />
+          <article className="benefit athlete" data-reveal data-from="end">
+            <img src={athletePhoto} width={1600} height={912} loading="lazy" alt="" />
+            <div className="benefit-body">
+              <h3>{t("landing.athletes.title")}</h3>
+              <p>{t("landing.athletes.body")}</p>
+              <ul>
+                {ATHLETE_BENEFITS.map((key, n) => (
+                  <li key={key} style={stagger(n + 1)}>
+                    <Check aria-hidden="true" />
+                    {t(key)}
+                  </li>
+                ))}
+              </ul>
+              <Button asChild variant="outline">
+                <Link to="/sign-in" search={{ as: "athlete" }}>
+                  {t("landing.athletes.cta")} <ChevronRight />
+                </Link>
               </Button>
-            </Link>
+            </div>
           </article>
+        </div>
+      </section>
+
+      <section id="how" className="landing-how">
+        <div className="landing-section-head centered" data-reveal>
+          <h2>{t("home.how.title")}</h2>
+        </div>
+        <div className="how-track" data-reveal>
+          <svg
+            className="how-line"
+            viewBox="0 0 1000 60"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <path
+              className="how-line-path"
+              pathLength={100}
+              d="M0 30 H300 L318 30 L332 6 L350 54 L364 18 L374 30 H640 L658 30 L672 6 L690 54 L704 18 L714 30 H1000"
+            />
+          </svg>
+          <ol className="how-steps">
+            {STEPS.map(([title, body], i) => (
+              <li key={title} style={stagger(i * 2 + 1)}>
+                <span className="how-num">{i + 1}</span>
+                <h3>{t(title)}</h3>
+                <p>{t(body)}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section id="app" className="landing-app">
+        <div className="landing-app-copy" data-reveal data-from="start">
+          <h2>{t("home.app.title")}</h2>
+          <p>{t("home.app.body")}</p>
+          <ul>
+            {(["home.app.1", "home.app.2", "home.app.3"] as const).map((key, n) => (
+              <li key={key} style={stagger(n + 2)}>
+                <Check aria-hidden="true" />
+                {t(key)}
+              </li>
+            ))}
+          </ul>
+          <StoreButtons />
+        </div>
+        <div className="landing-app-device" data-reveal data-from="rise">
+          <PhoneScene />
         </div>
       </section>
 
       <section className="landing-final" data-reveal>
         <h2>{t("landing.final.title")}</h2>
         <div className="landing-actions">
-          <Link to="/sign-in" search={{ as: "athlete" }}>
-            <Button size="lg" className="cta-primary">
+          <Button asChild size="lg" className="cta-primary">
+            <Link to="/sign-in" search={{ as: "athlete" }}>
               {t("landing.athlete")} <MoveRight />
-            </Button>
-          </Link>
-          <Link to="/sign-in" search={{ as: "coach" }}>
-            <Button variant="outline" size="lg">
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg">
+            <Link to="/sign-in" search={{ as: "coach" }}>
               {t("landing.coach")} <ChevronRight />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </section>
 
       <footer className="landing-footer">
-        <Brand />
-        <small>{t("landing.footer", { year })}</small>
+        <div className="landing-footer-brand">
+          <Brand />
+          <small>{t("landing.footer", { year })}</small>
+        </div>
+        <nav className="landing-footer-links" aria-label={t("home.nav.label")}>
+          <a href="#services">{t("home.nav.services")}</a>
+          <a href="#benefits">{t("home.nav.benefits")}</a>
+          <a href="#how">{t("home.nav.how")}</a>
+          <Link to="/sign-in">{t("auth.signIn")}</Link>
+          <Link to="/sign-up">{t("landing.coaches.cta")}</Link>
+        </nav>
+        <StoreButtons compact />
       </footer>
     </main>
   );
