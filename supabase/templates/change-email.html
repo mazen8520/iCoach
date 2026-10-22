@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<title>Confirm your new email</title>
+</head>
+<body style="margin:0;padding:0;background:#111113;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#111113;">Confirm the new email address for your iCoach account.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111113" style="background:#111113;">
+<tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+
+<tr><td style="padding:0 4px 20px;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="vertical-align:middle;"><img src="https://i-coach.vercel.app/icons/icon-192.png" width="40" height="40" alt="" style="display:block;border:0;border-radius:10px;"></td>
+<td style="vertical-align:middle;padding-left:12px;font-family:'Barlow Condensed', 'Arial Narrow', 'Segoe UI', Arial, sans-serif;font-size:24px;font-weight:800;letter-spacing:0.02em;color:#f4f1ed;">i<span style="color:#ef1a2a;">Coach</span></td>
+</tr></table>
+</td></tr>
+
+<tr><td bgcolor="#1b1b1e" style="background:#1b1b1e;border:1px solid #34343a;border-radius:14px;overflow:hidden;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td height="4" bgcolor="#ef1a2a" style="background:#ef1a2a;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td style="padding:36px 36px 8px;">
+<p style="margin:0 0 10px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#ef1a2a;">Email change</p>
+<h1 style="margin:0 0 16px;font-family:'Barlow Condensed', 'Arial Narrow', 'Segoe UI', Arial, sans-serif;font-size:34px;line-height:1.05;font-weight:800;text-transform:uppercase;color:#f4f1ed;">Confirm your new email</h1>
+<p style="margin:0 0 28px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:16px;line-height:1.6;color:#a9aab2;">Confirm that {{ .NewEmail }} should become the email address for your iCoach account.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td bgcolor="#ef1a2a" style="background:#ef1a2a;border-radius:8px;">
+<a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:16px 32px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#ffffff;text-decoration:none;">Confirm new email</a>
+</td></tr></table>
+<p style="margin:28px 0 6px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;color:#a9aab2;">Button not working? Paste this link into your browser:</p>
+<p style="margin:0 0 28px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;line-height:1.5;word-break:break-all;"><a href="{{ .ConfirmationURL }}" style="color:#f4f1ed;text-decoration:underline;">{{ .ConfirmationURL }}</a></p>
+</td></tr>
+<tr><td style="padding:0 36px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td bgcolor="#27272b" style="background:#27272b;border-radius:10px;padding:16px 18px;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:13px;line-height:1.55;color:#a9aab2;">Until you confirm, you keep signing in with your current address. If this wasn't you, ignore this email — nothing changes until the link is opened.</td>
+</tr></table>
+</td></tr>
+<tr><td dir="rtl" style="padding:24px 36px 32px;border-top:1px solid #34343a;text-align:right;">
+<p style="margin:0 0 8px;font-family:Tahoma, 'Segoe UI', Arial, sans-serif;font-size:17px;font-weight:700;color:#f4f1ed;">أكّد بريدك الإلكتروني الجديد</p>
+<p style="margin:0 0 14px;font-family:Tahoma, 'Segoe UI', Arial, sans-serif;font-size:14px;line-height:1.7;color:#a9aab2;">أكّد أن {{ .NewEmail }} سيصبح البريد الإلكتروني لحسابك في iCoach.</p>
+<a href="{{ .ConfirmationURL }}" style="font-family:Tahoma, 'Segoe UI', Arial, sans-serif;font-size:14px;font-weight:700;color:#ef1a2a;text-decoration:none;">تأكيد البريد الجديد &larr;</a>
+</td></tr>
+</table>
+</td></tr>
+
+<tr><td style="padding:24px 4px 0;font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#a9aab2;">
+iCoach &middot; Train, fuel, track and connect with your coach.<br>
+This email was sent to {{ .Email }} because of an action on <a href="https://i-coach.vercel.app" style="color:#a9aab2;">i-coach.vercel.app</a>.
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

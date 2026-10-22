@@ -123,6 +123,11 @@ const errors = {
   "errors.serverConfig": "The server is missing its Supabase configuration. Contact support.",
   "errors.invalidInput": "Some of the details are invalid. Check the form and try again.",
   "errors.passwordSameAsTemporary": "Choose a password that's different from your temporary one.",
+  "errors.emailInvalid": "That doesn't look like a complete email address. Check it for typos.",
+  "errors.emailDisposable":
+    "Temporary inboxes can't be used. Enter an email address you'll keep, so you can always recover your account.",
+  "errors.emailNoMailServer":
+    "That email domain can't receive mail. Check the part after the @ for typos.",
   "errors.passwordChangeNotRequired": "Your password has already been updated.",
   "errors.invalidCredentials": "Incorrect email or password.",
   "errors.emailNotConfirmed": "Confirm your email address before signing in.",
@@ -187,6 +192,8 @@ const auth = {
   "auth.signIn.eyebrow": "Welcome back",
   "auth.signIn.title": "Sign in to iCoach",
   "auth.signIn.subtitle": "Pick up exactly where you left off.",
+  "auth.idleSignedOut":
+    "You were signed out after 30 minutes away, to keep your account safe. Sign in to carry on.",
   "auth.coachSignIn.eyebrow": "Coach workspace",
   "auth.coachSignIn.title": "Coach sign in",
   "auth.coachSignIn.subtitle": "Manage your athletes, programs and schedule.",
@@ -421,7 +428,7 @@ const coachClients = {
   "coach.clients.sort.newest": "Newest",
   "coach.addClient.title": "Add an athlete",
   "coach.addClient.intro":
-    "Athletes don't sign up themselves — create their account here. They'll sign in with the temporary password {password} and must choose their own password the first time.",
+    "Athletes don't sign up themselves — create their account here. You'll get a one-time temporary password to share with them, and they must choose their own password the first time they sign in.",
   "coach.addClient.fullName": "Full name",
   "coach.addClient.namePlaceholder": "Maya Chen",
   "coach.addClient.email": "Email",

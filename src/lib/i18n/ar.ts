@@ -135,6 +135,11 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "errors.serverConfig": "إعدادات Supabase غير مكتملة على الخادم. تواصل مع الدعم.",
   "errors.invalidInput": "بعض البيانات غير صالحة. راجع النموذج وحاول مرة أخرى.",
   "errors.passwordSameAsTemporary": "اختر كلمة مرور مختلفة عن كلمة المرور المؤقتة.",
+  "errors.emailInvalid": "يبدو أن عنوان البريد الإلكتروني غير مكتمل. تحقّق من وجود أخطاء كتابية.",
+  "errors.emailDisposable":
+    "لا يمكن استخدام صناديق البريد المؤقتة. أدخل بريدًا إلكترونيًا دائمًا حتى تتمكن من استعادة حسابك دائمًا.",
+  "errors.emailNoMailServer":
+    "نطاق هذا البريد الإلكتروني لا يستقبل الرسائل. تحقّق من الجزء الذي يلي @.",
   "errors.passwordChangeNotRequired": "تم تحديث كلمة مرورك بالفعل.",
   "errors.invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
   "errors.emailNotConfirmed": "يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.",
@@ -197,6 +202,8 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "auth.signIn.eyebrow": "مرحبًا بعودتك",
   "auth.signIn.title": "تسجيل الدخول إلى iCoach",
   "auth.signIn.subtitle": "تابع من حيث توقفت تمامًا.",
+  "auth.idleSignedOut":
+    "تم تسجيل خروجك بعد 30 دقيقة من عدم النشاط حفاظًا على أمان حسابك. سجّل الدخول للمتابعة.",
   "auth.coachSignIn.eyebrow": "مساحة المدرب",
   "auth.coachSignIn.title": "دخول المدرب",
   "auth.coachSignIn.subtitle": "أدِر متدربيك وبرامجك وجدولك.",
@@ -429,7 +436,7 @@ export const ar: Record<TranslationKey, string> & Record<string, string> = {
   "coach.clients.sort.newest": "الأحدث",
   "coach.addClient.title": "إضافة متدرب",
   "coach.addClient.intro":
-    "المتدربون لا يسجّلون بأنفسهم — أنشئ حسابهم هنا. سيسجّلون الدخول بكلمة المرور المؤقتة {password} ويجب عليهم اختيار كلمة مرور خاصة بهم في أول دخول.",
+    "المتدربون لا يسجّلون بأنفسهم — أنشئ حسابهم هنا. ستحصل على كلمة مرور مؤقتة لمرة واحدة لمشاركتها معهم، ويجب عليهم اختيار كلمة مرور خاصة بهم في أول تسجيل دخول.",
   "coach.addClient.fullName": "الاسم الكامل",
   "coach.addClient.namePlaceholder": "سارة أحمد",
   "coach.addClient.email": "البريد الإلكتروني",

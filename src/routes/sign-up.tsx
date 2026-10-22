@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { MIN_PASSWORD_LENGTH, dashboardPath } from "@/lib/account";
 import { pageMeta, useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
+import { verifyEmailAddress } from "@/lib/email.functions";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -55,6 +56,16 @@ function SignUp() {
       return;
     }
     setLoading(true);
+    try {
+      const { problem } = await verifyEmailAddress({ data: { email: email.trim() } });
+      if (problem) {
+        setError(errorText(problem, i18n, "errors.generic"));
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // The check itself couldn't run; the confirmation email still has to be clicked.
+    }
     const result = await signUp(email.trim(), password, fullName.trim());
     setLoading(false);
     if (result.error) {
