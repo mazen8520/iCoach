@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { DEFAULT_ATHLETE_PASSWORD, MIN_PASSWORD_LENGTH, mustChangePassword } from "./account";
+import { MIN_PASSWORD_LENGTH, mustChangePassword } from "./account";
 
 const inputSchema = z.object({
   accessToken: z.string().min(1),
@@ -39,10 +39,6 @@ export const completeRequiredPasswordChange = createServerFn({ method: "POST" })
     if (!mustChangePassword(caller.user)) {
       throw new Error("PASSWORD_CHANGE_NOT_REQUIRED");
     }
-    if (data.password === DEFAULT_ATHLETE_PASSWORD) {
-      throw new Error("PASSWORD_SAME_AS_TEMPORARY");
-    }
-
     const { error } = await admin.auth.admin.updateUserById(caller.user.id, {
       password: data.password,
       app_metadata: { must_change_password: false },

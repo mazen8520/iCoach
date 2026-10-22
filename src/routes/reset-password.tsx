@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
-import { DEFAULT_ATHLETE_PASSWORD, MIN_PASSWORD_LENGTH, dashboardPath } from "@/lib/account";
+import { MIN_PASSWORD_LENGTH, dashboardPath } from "@/lib/account";
 import { pageMeta, useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
 
@@ -44,10 +44,6 @@ function ResetPassword() {
     }
     if (password !== confirm) {
       setError(t("validation.passwordMismatch"));
-      return;
-    }
-    if (mustChangePassword && password === DEFAULT_ATHLETE_PASSWORD) {
-      setError(t("errors.passwordSameAsTemporary"));
       return;
     }
     setLoading(true);

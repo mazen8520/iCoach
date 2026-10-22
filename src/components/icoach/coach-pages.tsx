@@ -76,7 +76,6 @@ import { Nutrition } from "./coach-nutrition";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { useConnectZoom, useDisconnectZoom, useZoomStatus } from "@/hooks/use-zoom";
-import { DEFAULT_ATHLETE_PASSWORD } from "@/lib/account";
 import { useCoachRoster, useCreateAthlete, type ClientStatus } from "@/hooks/use-clients";
 import { useCoachDashboard } from "@/hooks/use-dashboard";
 import { useConversations, useMessages, useSendMessage } from "@/hooks/use-messages";
@@ -499,9 +498,7 @@ function AddClientDialog() {
               <DialogTitle>{t("coach.addClient.title")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                {t("coach.addClient.intro", { password: DEFAULT_ATHLETE_PASSWORD })}
-              </p>
+              <p className="text-xs text-muted-foreground">{t("coach.addClient.intro")}</p>
               <Field label={t("coach.addClient.fullName")} htmlFor="athlete-name">
                 <Input
                   id="athlete-name"

@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { DEFAULT_ATHLETE_PASSWORD } from "./account";
+import { generateTemporaryPassword } from "./account";
+import { emailProblem } from "./server/email-check";
 
 const inputSchema = z.object({
   accessToken: z.string().min(1),
@@ -14,8 +15,8 @@ const inputSchema = z.object({
 });
 
 /**
- * Coach-only: creates a real Supabase Auth account for an athlete with the default temporary
- * password (see DEFAULT_ATHLETE_PASSWORD — the coach never types a password), sets their profile
+ * Coach-only: creates a real Supabase Auth account for an athlete with a random temporary
+ * password unique to that athlete (the coach never types a password), sets their profile
  * (role=client, biometrics), links them to the calling coach, and optionally logs their starting
  * weight — all server-side with the service-role key, which never reaches the browser.
  *
@@ -70,9 +71,15 @@ export const createAthleteAccount = createServerFn({ method: "POST" })
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    // Coach-created accounts skip the confirmation email, so the address is checked here: no
+    // typos, throwaway inboxes or domains that can't receive mail.
+    const problem = await emailProblem(data.email);
+    if (problem) throw new Error(problem);
+
+    const temporaryPassword = generateTemporaryPassword();
     const { data: created, error: createError } = await admin.auth.admin.createUser({
       email: data.email,
-      password: DEFAULT_ATHLETE_PASSWORD,
+      password: temporaryPassword,
       email_confirm: true,
       user_metadata: { full_name: data.fullName },
       app_metadata: { role: "client", must_change_password: true },
@@ -135,6 +142,6 @@ export const createAthleteAccount = createServerFn({ method: "POST" })
       id: athleteId,
       email: data.email,
       fullName: data.fullName,
-      temporaryPassword: DEFAULT_ATHLETE_PASSWORD,
+      temporaryPassword,
     };
   });
