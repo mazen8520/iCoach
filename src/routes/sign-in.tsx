@@ -11,6 +11,7 @@ import { dashboardPath } from "@/lib/account";
 import type { UserRole } from "@/lib/database.types";
 import { pageMeta, useI18n } from "@/lib/i18n";
 import { errorText } from "@/lib/i18n/errors";
+import { takeIdleSignOutFlag } from "@/lib/idle-session";
 
 type Portal = "coach" | "athlete";
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,6 +44,12 @@ function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [idleNotice, setIdleNotice] = useState(false);
+
+  // Signed out for inactivity (see idle-session.ts): say so, once.
+  useEffect(() => {
+    if (takeIdleSignOutFlag()) setIdleNotice(true);
+  }, []);
 
   const scene = portal === "athlete" ? "athlete" : portal === "coach" ? "coach" : "neutral";
   const portalRole: UserRole | null =
@@ -190,6 +197,11 @@ function SignIn() {
       }
     >
       <form onSubmit={onSubmit} noValidate>
+        {idleNotice && (
+          <p className="auth-notice" role="status">
+            {t("auth.idleSignedOut")}
+          </p>
+        )}
         <div className="auth-field">
           <Label htmlFor="email">{t("auth.email")}</Label>
           <Input

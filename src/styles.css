@@ -2145,6 +2145,14 @@ blockquote {
   font-size: 0.8rem;
   color: oklch(0.85 0.1 25);
 }
+.auth-notice {
+  margin-bottom: 0.25rem;
+  border: 1px solid color-mix(in oklab, var(--primary) 40%, transparent);
+  background: var(--primary-fade);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--foreground);
+}
 .auth-body form > button[type="submit"],
 .auth-body > button {
   height: 3.25rem;

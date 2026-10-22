@@ -15,6 +15,14 @@ import { mustChangePassword as needsPasswordChange } from "./account";
 import { completeRequiredPasswordChange } from "./password.functions";
 import { isNativeApp } from "./native";
 import { clearNativeAuthStorage } from "./native-auth-storage";
+import {
+  arrivedFromEmailLink,
+  clearLastActive,
+  flagIdleSignOut,
+  markActive,
+  sessionIdleExpired,
+  watchIdle,
+} from "./idle-session";
 
 type SignInResult = {
   error: string | null;
@@ -76,11 +84,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userIdRef = useRef<string | null>(null);
   const previousUserIdRef = useRef<string | null>(null);
 
+  // Website sessions end after IDLE_LIMIT_MS without activity (see idle-session.ts). A stored
+  // session that's already stale is never shown — not even for a moment — before it's ended.
+  const idleGuard = useRef(false);
+  const endIdleSession = useCallback(() => {
+    flagIdleSignOut();
+    clearLastActive();
+    userIdRef.current = null;
+    setSession(null);
+    setProfileState(null);
+    // Revokes this device's refresh token on the server, not just the copy in the browser.
+    void supabase.auth.signOut({ scope: "local" }).then(({ error }) => {
+      if (error) clearStoredSession();
+    });
+  }, []);
+  const acceptSession = useCallback(
+    (next: Session | null) => {
+      if (next && idleGuard.current && sessionIdleExpired()) {
+        // Flagged now, before the redirect to /sign-in renders and looks for it.
+        flagIdleSignOut();
+        // Deferred: supabase-js deadlocks on Supabase calls made inside its auth callback.
+        setTimeout(endIdleSession, 0);
+        return null;
+      }
+      return next;
+    },
+    [endIdleSession],
+  );
+
   useEffect(() => {
     let active = true;
+    idleGuard.current = !isNativeApp();
+    if (idleGuard.current && arrivedFromEmailLink(window.location)) markActive(Date.now(), true);
+
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
-      setSession(data.session);
+      setSession(acceptSession(data.session));
       setInitialized(true);
     });
 
@@ -88,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // awaited inside this callback. The profile is loaded by the effect below instead.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!active) return;
-      setSession(newSession);
+      setSession(acceptSession(newSession));
       setInitialized(true);
     });
 
@@ -96,7 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // rather than showing whatever account's screen was frozen in the cache.
     const onPageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      supabase.auth.getSession().then(({ data }) => active && setSession(data.session));
+      supabase.auth
+        .getSession()
+        .then(({ data }) => active && setSession(acceptSession(data.session)));
     };
     window.addEventListener("pageshow", onPageShow);
 
@@ -105,7 +146,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe();
       window.removeEventListener("pageshow", onPageShow);
     };
-  }, []);
+  }, [acceptSession]);
+
+  // While signed in on the website, keep the activity clock running and end the session once
+  // the visitor has been away for too long.
+  useEffect(() => {
+    if (!userId || !idleGuard.current) return;
+    markActive(Date.now(), true);
+    return watchIdle(endIdleSession);
+  }, [userId, endIdleSession]);
 
   const fetchProfile = useCallback(async (id: string) => {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", id).maybeSingle();
@@ -147,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileError: current?.error ?? false,
     mustChangePassword: needsPasswordChange(user),
     signIn: async (email, password) => {
+      markActive(Date.now(), true);
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error || !data.user) {
         return { error: error?.message ?? "Sign in failed", role: null, mustChangePassword: false };
@@ -172,10 +222,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     },
     signUp: async (email, password, fullName) => {
+      markActive(Date.now(), true);
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName } },
+        options: {
+          data: { full_name: fullName },
+          // The confirmation link signs them straight in and lands on their dashboard.
+          emailRedirectTo: `${window.location.origin}/sign-in?as=coach`,
+        },
       });
       // With "Confirm email" enabled in Supabase Auth there's no session until the link is clicked.
       return { error: error?.message ?? null, needsConfirmation: !error && !data.session };
@@ -183,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut: async () => {
       const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) clearStoredSession();
+      clearLastActive();
       userIdRef.current = null;
       setSession(null);
       setProfileState(null);
@@ -207,6 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         // Changing the password revokes the old refresh token, so start a fresh session with
         // the new password — it also carries the cleared must_change_password flag.
+        markActive(Date.now(), true);
         const { error } = await supabase.auth.signInWithPassword({
           email: user?.email ?? "",
           password,
